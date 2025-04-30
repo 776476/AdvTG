@@ -1,0 +1,12 @@
+# AdvTG: An Adversarial Traffic Generation Framework to Deceive DL-Based Malicious Traffic Detection Models
+
+This repository contains the source code and resources for **AdvTG**, an adversarial traffic generation framework designed to deceive deep learning-based malicious traffic detection systems.
+
+## Overview
+
+![AdvTG Overview](images/overview.png)
+
+The pipeline consists of three main components:
+1. **Detection Model Training**: Extracts both token-level and image-based features from HTTP traffic to train robust detection models.
+2. **LLM Finetuning**: Uses instruction-style prompts to guide a large language model to generate benign or malicious traffic samples.
+3. **RL-based Adversarial Generation**: Uses PPO to fine-tune the LLM in a black-box setting against a fixed DL-based traffic detector.
