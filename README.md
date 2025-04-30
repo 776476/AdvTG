@@ -4,7 +4,7 @@ This repository contains the source code and resources for **AdvTG**, an adversa
 
 ## Overview
 
-![AdvTG Overview](images/overview.png)
+![AdvTG Overview](./overview.png)
 
 The pipeline consists of three main components:
 1. **Detection Model Training**: Extracts both token-level and image-based features from HTTP traffic to train robust detection models.
