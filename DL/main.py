@@ -10,22 +10,20 @@ def set_environment():
     """Set environment variables for GPU usage."""
     os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-    # Uncomment if needed
-    # os.environ["WORLD_SIZE"] = "2"
-    # os.environ['HTTP_PROXY'] = '127.0.0.1:7890'
-    # os.environ['HTTPS_PROXY'] = '127.0.0.1:7890'
     os.environ["NCCL_P2P_DISABLE"] = "1"
     os.environ["NCCL_IB_DISABLE"] = "1"
     
     # Set Hugging Face mirror for Chinese users - multiple methods
     os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
     os.environ["HUGGINGFACE_HUB_CACHE"] = "./models/huggingface_cache"
-    # Alternative mirror endpoints
-    # os.environ["HF_HUB_ENDPOINT"] = "https://hf-mirror.com"
+
 
 def main():
     # Set environment variables
     set_environment()
+    
+    # Configuration
+    FORCE_SIMPLE_MODE = False  # Set to True to skip BERT and only use custom models
     
     # Define constants
     DATA_PATH = "../dataset/train_data2.json"
@@ -48,25 +46,25 @@ def main():
     
     # Train transformer model (BERT)
     print("\n====== Training BERT Model ======")
-    # Use Chinese mirror or local cache
-    transformer_model_name = "bert-base-uncased"
-    print(f"Downloading model from: {os.environ.get('HF_ENDPOINT', 'https://huggingface.co')}")
     
-    # Try to load tokenizer with offline mode fallback
-    try:
-        # First try to load from cache or with mirror
+    if FORCE_SIMPLE_MODE:
+        print("Force simple mode enabled - using SimpleTokenizer")
+        tokenizer = SimpleTokenizer()
+        print(f"Tokenizer type: {type(tokenizer)}")
+        print(f"Is SimpleTokenizer: {isinstance(tokenizer, SimpleTokenizer)}")
+    else:
+        # Use Chinese mirror or local cache
+        transformer_model_name = "bert-base-uncased"
+        print(f"Downloading model from: {os.environ.get('HF_ENDPOINT', 'https://huggingface.co')}")
+        
+        # Try to load tokenizer with offline mode fallback
+        print("Attempting to load BERT tokenizer...")
         tokenizer = load_tokenizer(transformer_model_name)
         print("Successfully loaded tokenizer")
         print(f"Tokenizer type: {type(tokenizer)}")
         print(f"Is SimpleTokenizer: {isinstance(tokenizer, SimpleTokenizer)}")
-    except Exception as e:
-        print(f"Failed to download model: {e}")
-        print("Using simple tokenizer for offline training...")
-        # Use simple tokenizer from data_processing
-        tokenizer = SimpleTokenizer()
         
     # Load and prepare data
-    json_data = load_data(DATA_PATH)
     train_dataset, val_dataset, test_dataset = prepare_dataset(json_data, tokenizer, MAX_LENGTH)
     
     # Check if using simple tokenizer and adjust training accordingly
@@ -134,58 +132,6 @@ def main():
             print(f"Failed to train {model_name}: {e}")
     
     print("\nAll models training completed!")
-    
-    # Prepare dataset for transformer model
-    train_dataset, val_dataset, test_dataset = prepare_dataset(json_data, tokenizer, MAX_LENGTH)
-    
-    # Define training arguments for transformer model
-    training_args = TrainingArguments(
-        output_dir=f"./models/bert",
-        evaluation_strategy="epoch",
-        learning_rate=LEARNING_RATE,
-        per_device_train_batch_size=BATCH_SIZE,
-        per_device_eval_batch_size=BATCH_SIZE,
-        num_train_epochs=NUM_EPOCHS,
-        weight_decay=0.01,
-        save_strategy="epoch",
-        load_best_model_at_end=True,
-    )
-    
-    # Train transformer model
-    train_transformer_model("bert", transformer_model_name, train_dataset, val_dataset, training_args)
-    
-    # Train custom models
-    print("\n====== Training Custom Models ======")
-    
-    # Vocabulary size (from tokenizer)
-    vocab_size = len(tokenizer.vocab)
-    embed_size = 128
-    num_classes = 2
-    
-    # Define custom models
-    models = {
-        "textcnn": TextCNNClassifier(vocab_size, embed_size, num_classes, MAX_LENGTH),
-        "cnn_lstm": CNNLSTMClassifier(vocab_size, embed_size, num_classes, MAX_LENGTH),
-        "dnn": DNNClassifier(vocab_size, embed_size, num_classes, MAX_LENGTH),
-        "deeplog": DeepLog(vocab_size, embed_size, num_classes, MAX_LENGTH)
-    }
-    
-    # Define training arguments for custom models
-    custom_training_args = TrainingArguments(
-        output_dir="./models/custom_models",
-        per_device_train_batch_size=BATCH_SIZE,
-        per_device_eval_batch_size=BATCH_SIZE,
-        learning_rate=LEARNING_RATE,
-        num_train_epochs=NUM_EPOCHS,
-    )
-    
-    # Train each custom model
-    for model_name, model in models.items():
-        print(f"\nTraining model: {model_name}")
-        train_custom_model(model, model_name, train_dataset, val_dataset, custom_training_args)
-        print(f"Completed training model: {model_name}")
-    
-    print("\nTraining completed for all models!")
 
 if __name__ == "__main__":
     main() 
