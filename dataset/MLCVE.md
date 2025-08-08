@@ -1,3 +1,93 @@
+# CICIDS2017 数据
+
+## # AdvTG Dataset Setup Guide
+
+This directory contains the dataset processing scripts for the AdvTG framework. Due to GitHub's file size limitations, large dataset files are not included in the repository.
+
+## Required Dataset Files
+
+### CICIDS2017 Dataset
+
+You need to manually download the following files:
+
+1. **MachineLearningCSV.zip** (224 MB)
+   - Source: https://www.unb.ca/cic/datasets/ids-2017.html
+   - Direct link: http://cicresearch.ca/CICDataset/CIC-IDS-2017/
+   - Place in: `dataset/MachineLearningCSV.zip`
+
+2. **GeneratedLabelledFlows.zip** (271 MB) - Optional
+   - Source: Same as above
+   - Contains raw PCAP flows with labels
+   - Place in: `dataset/GeneratedLabelledFlows.zip`
+
+## Quick Setup
+
+1. Download the required files to the `dataset/` directory:
+   ```bash
+   cd dataset/
+   wget http://cicresearch.ca/CICDataset/CIC-IDS-2017/MachineLearningCSV.zip
+   ```
+
+2. Run the processing script:
+   ```bash
+   python process_cicids2017.py
+   ```
+
+3. This will generate the training data files:
+   - `train_data2.json` - Training data for AdvTG
+   - `test2.json` - Test data for evaluation
+   - `cicids2017_full.json` - Complete processed dataset
+
+## File Structure After Setup
+
+```
+dataset/
+├── README_DATASET.md              # This file
+├── process_cicids2017.py          # Main processing script
+├── MachineLearningCSV.zip         # Downloaded CICIDS2017 data (224MB)
+├── GeneratedLabelledFlows.zip     # Downloaded PCAP flows (271MB) [Optional]
+├── MachineLearningCVE/            # Extracted CSV files (auto-generated)
+├── train_data2.json               # Processed training data (auto-generated)
+├── test2.json                     # Processed test data (auto-generated)
+└── cicids2017_full.json           # Full processed dataset (auto-generated)
+```
+
+## Data Format
+
+The processed JSON files follow this format:
+```json
+[
+  {
+    "Request Line": "GET /api/data HTTP/1.1",
+    "Request Headers": {"Host": "example.com", "User-Agent": "..."},
+    "Request Body": "",
+    "Label": "Malicious",
+    "Source": "CICIDS2017"
+  }
+]
+```
+
+## Dataset Information
+
+- **Total samples**: ~80,000 network flows
+- **Classes**: Benign and Malicious traffic
+- **Features**: HTTP request components extracted from network flows
+- **Attacks included**: DoS, DDoS, Web attacks, Brute Force, Botnet, etc.
+
+## Citation
+
+If you use the CICIDS2017 dataset, please cite:
+
+```bibtex
+@inproceedings{sharafaldin2018toward,
+  title={Toward Generating a New Intrusion Detection Dataset and Intrusion Traffic Characterization},
+  author={Sharafaldin, Iman and Lashkari, Arash Habibi and Ghorbani, Ali A},
+  booktitle={4th International Conference on Information Systems Security and Privacy (ICISSP)},
+  pages={108--116},
+  year={2018}
+}
+```
+
 ### 文件列表：
 
 Monday-WorkingHours.pcap_ISCX.csv - 正常流量
@@ -9,8 +99,6 @@ Friday-WorkingHours-Morning.pcap_ISCX.csv - 僵尸网络攻击
 Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv - 端口扫描
 Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv - DDoS攻击
 数据
-
-# CICIDS2017 数据处理指南
 
 ## 概述
 
