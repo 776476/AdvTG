@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
 """
-CICIDS2017 Dataset Processing Script
-===================================
+CICIDS2017 Dataset Processor for AdvTG Framework
 
-This script automates the entire process from downloading/extracting CICIDS2017 dataset
-to converting it into the format required by the AdvTG data processing pipeline.
+This script processes the CICIDS2017 dataset and converts it to HTTP traffic format
+for training different components of the AdvTG framework with optimized data allocation.
 
-Usage:
-    python process_cicids2017.py
+Data allocation strategy:
+- DL Training: 10% (dl_train.json)
+- LLM Training: 60% (llm_train.json) 
+- RL Training: 12% (rl_train.json)
+- Validation: 5% (val.json)
+- Testing: 13% (test.json)
 
-Requirements:
-    - pandas
-    - zipfile (built-in)
-    - json (built-in)
-    - os (built-in)
+Author: AdvTG Team
 """
 
 import os
@@ -78,8 +77,8 @@ class CICIDS2017Processor:
         
         return existing_files
     
-    def load_csv_file(self, file_path: str, max_samples: int = 1000) -> List[Dict]:
-        """Load and sample data from a CSV file."""
+    def load_csv_file(self, file_path: str, max_samples: int = None) -> List[Dict]:
+        """Load data from a CSV file. If max_samples is None, load all data."""
         print(f"📊 Processing {os.path.basename(file_path)}...")
         
         try:
@@ -92,11 +91,14 @@ class CICIDS2017Processor:
                 # Read data rows
                 reader = csv.reader(f)
                 rows = list(reader)
+                total_rows = len(rows)
                 
-                # Sample data to avoid memory issues
-                if len(rows) > max_samples:
+                # Sample data if max_samples is specified
+                if max_samples is not None and len(rows) > max_samples:
                     rows = random.sample(rows, max_samples)
-                    print(f"  📝 Sampled {max_samples} from {len(rows)} total rows")
+                    print(f"  📝 Sampled {max_samples} from {total_rows} total rows")
+                else:
+                    print(f"  📝 Loading all {total_rows} rows")
                 
                 # Convert rows to dictionaries
                 for row in rows:
@@ -232,8 +234,8 @@ class CICIDS2017Processor:
         
         return http_item
     
-    def process_all_files(self, max_samples_per_file: int = 1000) -> List[Dict[str, Any]]:
-        """Process all CSV files and convert to HTTP format."""
+    def process_all_files(self, max_samples_per_file: int = None) -> List[Dict[str, Any]]:
+        """Process all CSV files and convert to HTTP format. If max_samples_per_file is None, process all data."""
         print("\nStep 2: Converting CICIDS2017 data to HTTP format...")
         
         csv_files = self.get_csv_files()
@@ -264,46 +266,97 @@ class CICIDS2017Processor:
     
     def save_processed_data(self, http_data: List[Dict[str, Any]], 
                           output_files: Dict[str, str] = None) -> Dict[str, str]:
-        """Save processed data to JSON files."""
-        print("\nStep 3: Saving processed data...")
+        """Save processed data to JSON files with new data allocation strategy."""
+        print("\nStep 3: Saving processed data with optimized allocation...")
         
         if output_files is None:
             output_files = {
-                'train': 'train_data2.json',
-                'test': 'test2.json',
-                'full': 'cicids2017_full.json'
+                'dl_train': 'dl_train.json',      # DL训练用小数据集
+                'llm_train': 'llm_train.json',    # LLM微调用大数据集
+                'rl_train': 'rl_train.json',     # RL训练用中等数据集
+                'val': 'val.json',           # 验证集
+                'test': 'test.json',             # 公共测试集
+                'full': 'cicids2017_full.json'         # 完整数据集
             }
         
         if not http_data:
             print("❌ No data to save!")
             return {}
         
-        # Shuffle data
+        # Shuffle data for random distribution
         random.shuffle(http_data)
         
-        # Split data
-        train_split = 0.8
-        test_split = 0.2
+        # Optimized data allocation strategy:
+        # - DL Training: 10% (small dataset for deep learning models)
+        # - LLM Training: 60% (large dataset for LLM fine-tuning)  
+        # - RL Training: 12% (medium dataset for reinforcement learning)
+        # - Validation: 5% (validation set for hyperparameter tuning)
+        # - Test: 13% (test set for final evaluation)
+        dl_split = 0.10      # 10% for DL training
+        llm_split = 0.60     # 60% for LLM training
+        rl_split = 0.12      # 12% for RL training
+        val_split = 0.05     # 5% for validation
+        test_split = 0.13    # 13% for testing
         
-        train_size = int(len(http_data) * train_split)
-        train_data = http_data[:train_size]
-        test_data = http_data[train_size:]
+        total_size = len(http_data)
+        dl_size = int(total_size * dl_split)
+        llm_size = int(total_size * llm_split)
+        rl_size = int(total_size * rl_split)
+        val_size = int(total_size * val_split)
+        test_size = total_size - dl_size - llm_size - rl_size - val_size  # Remaining for test
+        
+        # Split data
+        idx = 0
+        dl_data = http_data[idx:idx + dl_size]
+        idx += dl_size
+        
+        llm_data = http_data[idx:idx + llm_size]
+        idx += llm_size
+        
+        rl_data = http_data[idx:idx + rl_size]
+        idx += rl_size
+        
+        val_data = http_data[idx:idx + val_size]
+        idx += val_size
+        
+        test_data = http_data[idx:idx + test_size]
         
         saved_files = {}
         
-        # Save training data
-        train_path = os.path.join(self.dataset_dir, output_files['train'])
-        with open(train_path, 'w', encoding='utf-8') as f:
-            json.dump(train_data, f, indent=2, ensure_ascii=False)
-        saved_files['train'] = train_path
-        print(f"✅ Training data saved: {train_path} ({len(train_data)} samples)")
+        # Save DL training data (small)
+        dl_path = os.path.join(self.dataset_dir, output_files['dl_train'])
+        with open(dl_path, 'w', encoding='utf-8') as f:
+            json.dump(dl_data, f, indent=2, ensure_ascii=False)
+        saved_files['dl_train'] = dl_path
+        print(f"✅ DL training data saved: {dl_path} ({len(dl_data)} samples, {dl_split*100}%)")
         
-        # Save test data
+        # Save LLM training data (large)
+        llm_path = os.path.join(self.dataset_dir, output_files['llm_train'])
+        with open(llm_path, 'w', encoding='utf-8') as f:
+            json.dump(llm_data, f, indent=2, ensure_ascii=False)
+        saved_files['llm_train'] = llm_path
+        print(f"✅ LLM training data saved: {llm_path} ({len(llm_data)} samples, {llm_split*100}%)")
+        
+        # Save RL training data (medium)
+        rl_path = os.path.join(self.dataset_dir, output_files['rl_train'])
+        with open(rl_path, 'w', encoding='utf-8') as f:
+            json.dump(rl_data, f, indent=2, ensure_ascii=False)
+        saved_files['rl_train'] = rl_path
+        print(f"✅ RL training data saved: {rl_path} ({len(rl_data)} samples, {rl_split*100}%)")
+        
+        # Save validation data
+        val_path = os.path.join(self.dataset_dir, output_files['val'])
+        with open(val_path, 'w', encoding='utf-8') as f:
+            json.dump(val_data, f, indent=2, ensure_ascii=False)
+        saved_files['val'] = val_path
+        print(f"✅ Validation data saved: {val_path} ({len(val_data)} samples, {val_split*100}%)")
+        
+        # Save test data (common)
         test_path = os.path.join(self.dataset_dir, output_files['test'])
         with open(test_path, 'w', encoding='utf-8') as f:
             json.dump(test_data, f, indent=2, ensure_ascii=False)
         saved_files['test'] = test_path
-        print(f"✅ Test data saved: {test_path} ({len(test_data)} samples)")
+        print(f"✅ Test data saved: {test_path} ({len(test_data)} samples, {test_split*100:.1f}%)")
         
         # Save full dataset
         full_path = os.path.join(self.dataset_dir, output_files['full'])
@@ -311,6 +364,21 @@ class CICIDS2017Processor:
             json.dump(http_data, f, indent=2, ensure_ascii=False)
         saved_files['full'] = full_path
         print(f"✅ Full dataset saved: {full_path} ({len(http_data)} samples)")
+        
+        # Create legacy compatibility files
+        # Keep train_data2.json for backward compatibility (pointing to DL data)
+        legacy_train_path = os.path.join(self.dataset_dir, 'train_data2.json')
+        with open(legacy_train_path, 'w', encoding='utf-8') as f:
+            json.dump(dl_data, f, indent=2, ensure_ascii=False)
+        saved_files['legacy_train'] = legacy_train_path
+        print(f"✅ Legacy train file saved: {legacy_train_path} (for backward compatibility)")
+        
+        # Keep test2.json for backward compatibility
+        legacy_test_path = os.path.join(self.dataset_dir, 'test2.json')
+        with open(legacy_test_path, 'w', encoding='utf-8') as f:
+            json.dump(test_data, f, indent=2, ensure_ascii=False)
+        saved_files['legacy_test'] = legacy_test_path
+        print(f"✅ Legacy test file saved: {legacy_test_path} (for backward compatibility)")
         
         return saved_files
     
@@ -342,10 +410,15 @@ class CICIDS2017Processor:
             percentage = (count / len(http_data)) * 100
             print(f"  {source}: {count} ({percentage:.1f}%)")
     
-    def run_full_pipeline(self, max_samples_per_file: int = 1000):
-        """Run the complete processing pipeline."""
+    def run_full_pipeline(self, max_samples_per_file: int = None):
+        """Run the complete processing pipeline. If max_samples_per_file is None, process all data."""
         print("🚀 Starting CICIDS2017 processing pipeline...")
         print("=" * 60)
+        
+        if max_samples_per_file is None:
+            print("📋 Processing ALL data (no sampling)")
+        else:
+            print(f"📋 Processing {max_samples_per_file} samples per file")
         
         # Step 1: Extract data
         if not self.check_and_extract_zip():
@@ -365,28 +438,41 @@ class CICIDS2017Processor:
         
         print("\n🎉 Processing completed successfully!")
         print("=" * 60)
-        print("You can now use the generated files with your AdvTG data processing:")
-        print(f"  • Training data: {saved_files.get('train', 'N/A')}")
-        print(f"  • Test data: {saved_files.get('test', 'N/A')}")
-        print(f"  • Full dataset: {saved_files.get('full', 'N/A')}")
+        print("Generated files for optimized training purposes:")
+        print(f"  • DL Training (10%): {saved_files.get('dl_train', 'N/A')}")
+        print(f"  • LLM Training (60%): {saved_files.get('llm_train', 'N/A')}")
+        print(f"  • RL Training (12%): {saved_files.get('rl_train', 'N/A')}")
+        print(f"  • Validation Set (5%): {saved_files.get('val', 'N/A')}")
+        print(f"  • Test Data (13%): {saved_files.get('test', 'N/A')}")
+        print(f"  • Full Dataset: {saved_files.get('full', 'N/A')}")
+        print(f"  • Legacy Files: {saved_files.get('legacy_train', 'N/A')}, {saved_files.get('legacy_test', 'N/A')}")
         
-        print("\nExample usage:")
-        print("  from DL.data_processing import load_data, prepare_dataset")
-        print("  data = load_data('dataset/train_data2.json')")
-        print("  dataset = prepare_dataset(data)")
+        print("\nUsage examples:")
+        print("  DL Training:")
+        print("    from DL.data_processing import load_data, prepare_dataset")
+        print("    data = load_data('dataset/dl_train_small.json')")
+        print("    dataset = prepare_dataset(data)")
+        print("  LLM Fine-tuning:")
+        print("    # Modify LLM-Finetune/train_llama.py to use 'dataset/llm_train_large.json'")
         
         return True
 
 def main():
     """Main function to run the processing pipeline."""
-    # You can adjust these parameters
-    MAX_SAMPLES_PER_FILE = 1000  # Adjust based on your memory/storage constraints
+    # Process ALL data instead of sampling
+    MAX_SAMPLES_PER_FILE = None  # None means process all data
     
     processor = CICIDS2017Processor()
     success = processor.run_full_pipeline(max_samples_per_file=MAX_SAMPLES_PER_FILE)
     
     if success:
         print("\n✅ All done! Your CICIDS2017 data is ready for AdvTG training.")
+        print("📊 Optimized data split summary:")
+        print("  • DL models will use: dl_train.json (10% of data)")
+        print("  • LLM fine-tuning will use: llm_train.json (60% of data)")
+        print("  • RL training will use: rl_train.json (12% of data)")
+        print("  • All models will validate on: val.json (5% of data)")
+        print("  • Final evaluation will use: test.json (13% of data)")
     else:
         print("\n❌ Processing failed. Please check the error messages above.")
         return 1

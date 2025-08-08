@@ -100,9 +100,17 @@ from datasets import load_dataset
 
 #加载自己的http数据集
 import json
-with open("../dataset/train_data2.json","r") as f:
-  data = json.load(f)
+
+# 加载训练数据和验证数据
+with open("../dataset/llm_train.json","r") as f:  # Use large dataset for LLM fine-tuning
+    train_data = json.load(f)
+
+with open("../dataset/val.json","r") as f:  # Use dedicated validation set
+    val_data = json.load(f)
+
+print(f"📊 Loaded {len(train_data)} training samples and {len(val_data)} validation samples")
 from datasets import Dataset
+
 def json_to_string(data, indent=0):
     result = []
     indent_str = ' ' * indent
@@ -120,20 +128,31 @@ def json_to_string(data, indent=0):
         result.append(f'{indent_str}{data}')
     return '\n'.join(result)
 
-#benign_instruction = "Follow the prompts to generate benign HTTP traffic with request lines, request headers, and payloads, for example: GET /?FNKM=GMUEZPM HTTP/1.1\nCache_Control: no-cache\n\n\{PAYLOAD\}"
-#malicious_instruction = "Follow the prompts to generate malicious HTTP traffic with request lines, request headers, and payloads, for example: GET /?FNKM=GMUEZPM HTTP/1.1\nCache_Control: no-cache\n\n\{PAYLOAD\}"
-
-formatted_data = {
-                "text": [item["Request Line"]+"\n"+json_to_string(item["Request Headers"])+"\n\n"+item["Request Body"] for item in data],
-                "instruction": ["Follow these tips to generate malicious http traffic" if item["Label"]=="Malicious" else "Follow these tips to generate benign http traffic" for item in data],
-                "input" : [item["Request Line"] for item in data],
-                "output":[item["Request Line"]+"\n"+json_to_string(item["Request Headers"])+"\n\n"+item["Request Body"] for item in data]
+# 格式化训练数据
+train_formatted_data = {
+    "text": [item["Request Line"]+"\n"+json_to_string(item["Request Headers"])+"\n\n"+item["Request Body"] for item in train_data],
+    "instruction": ["Follow these tips to generate malicious http traffic" if item["Label"]=="Malicious" else "Follow these tips to generate benign http traffic" for item in train_data],
+    "input": [item["Request Line"] for item in train_data],
+    "output": [item["Request Line"]+"\n"+json_to_string(item["Request Headers"])+"\n\n"+item["Request Body"] for item in train_data]
 }
-dataset = Dataset.from_dict(formatted_data)
-dataset = dataset.shuffle(seed=42)
+train_dataset = Dataset.from_dict(train_formatted_data)
 
+# 格式化验证数据（相同的Alpaca格式）
+val_formatted_data = {
+    "text": [item["Request Line"]+"\n"+json_to_string(item["Request Headers"])+"\n\n"+item["Request Body"] for item in val_data],
+    "instruction": ["Follow these tips to generate malicious http traffic" if item["Label"]=="Malicious" else "Follow these tips to generate benign http traffic" for item in val_data],
+    "input": [item["Request Line"] for item in val_data],
+    "output": [item["Request Line"]+"\n"+json_to_string(item["Request Headers"])+"\n\n"+item["Request Body"] for item in val_data]
+}
+val_dataset = Dataset.from_dict(val_formatted_data)
 
+# 对训练和验证数据集进行洗牌
+train_dataset = train_dataset.shuffle(seed=42)
+val_dataset = val_dataset.shuffle(seed=42)
 
+# 将数据集格式化为Alpaca提示词格式
+train_dataset = train_dataset.map(formatting_prompts_func, batched=True)
+val_dataset = val_dataset.map(formatting_prompts_func, batched=True)
 
 from trl import SFTTrainer
 from transformers import TrainingArguments
@@ -148,8 +167,8 @@ model.to(device)
 trainer = SFTTrainer(
     model = model,
     tokenizer = tokenizer,
-    train_dataset = dataset,
-    eval_dataset = dataset.select(range(20000,20100)),
+    train_dataset = train_dataset,
+    eval_dataset = val_dataset,  # Use proper validation dataset
     dataset_text_field = "text",
     max_seq_length = max_seq_length,
     dataset_num_proc = 2,

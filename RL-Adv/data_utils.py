@@ -81,13 +81,13 @@ def json_to_string(data, indent=0):
         result.append(f'{indent_str}{data}')
     return '\n'.join(result)
 
-def load_http_dataset(file_path="../dataset/test2.json", sample_size=40000):
+def load_http_dataset(file_path="../dataset/rl_train.json", sample_size=None):
     """
-    Load HTTP dataset from JSON file.
+    Load HTTP dataset from JSON file for RL training.
     
     Args:
-        file_path: Path to the JSON file
-        sample_size: Number of samples to randomly select
+        file_path: Path to the JSON file (default: RL training dataset)
+        sample_size: Number of samples to randomly select (None = use all data)
         
     Returns:
         Dataset: Hugging Face dataset
@@ -95,7 +95,12 @@ def load_http_dataset(file_path="../dataset/test2.json", sample_size=40000):
     with open(file_path, "r") as f:
         data = json.load(f)
 
-    data = random.choices(data, k=sample_size)
+    # Use all data if sample_size is None, otherwise sample
+    if sample_size is not None and len(data) > sample_size:
+        data = random.choices(data, k=sample_size)
+        print(f"📊 Sampled {sample_size} from {len(data)} total samples for RL training")
+    else:
+        print(f"📊 Using all {len(data)} samples for RL training")
     
     formatted_data = {
         "text": [item["Request Line"]+"\n"+json_to_string(item["Request Headers"])+"\n\n"+item["Request Body"] for item in data],
