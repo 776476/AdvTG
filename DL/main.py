@@ -15,7 +15,24 @@ def set_environment():
     
     # Set Hugging Face mirror for Chinese users - multiple methods
     os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-    os.environ["HUGGINGFACE_HUB_CACHE"] = "./models/huggingface_cache"
+    os.environ["HUGGINGFACE_HUB_ENDPOINT"] = "https://hf-mirror.com"
+    os.environ["HF_HUB_ENDPOINT"] = "https://hf-mirror.com"
+    
+    # Additional mirror settings
+    os.environ["HUGGINGFACE_HUB_URL"] = "https://hf-mirror.com"
+    
+    # Force use of mirror for transformers library
+    try:
+        from transformers import file_utils
+        file_utils.HUGGINGFACE_CO_URL_HOME = "https://hf-mirror.com"
+        print("Set transformers to use mirror: https://hf-mirror.com")
+    except:
+        try:
+            import transformers.utils.hub as hub_utils
+            hub_utils.HUGGINGFACE_CO_URL_HOME = "https://hf-mirror.com"
+            print("Set transformers hub to use mirror")
+        except:
+            print("Could not set transformers mirror, using environment variables only")
 
 
 def main():
@@ -53,12 +70,12 @@ def main():
         print(f"Tokenizer type: {type(tokenizer)}")
         print(f"Is SimpleTokenizer: {isinstance(tokenizer, SimpleTokenizer)}")
     else:
-        # Use Chinese mirror or local cache
+        # Download from mirror (no cache)
         transformer_model_name = "bert-base-uncased"
         print(f"Downloading model from: {os.environ.get('HF_ENDPOINT', 'https://huggingface.co')}")
         
-        # Try to load tokenizer with offline mode fallback
-        print("Attempting to load BERT tokenizer...")
+        # Try to load tokenizer directly from mirror
+        print("Attempting to download BERT tokenizer from mirror...")
         tokenizer = load_tokenizer(transformer_model_name)
         print("Successfully loaded tokenizer")
         print(f"Tokenizer type: {type(tokenizer)}")
