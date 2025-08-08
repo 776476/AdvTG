@@ -6,11 +6,12 @@ This script processes the CICIDS2017 dataset and converts it to HTTP traffic for
 for training different components of the AdvTG framework with optimized data allocation.
 
 Data allocation strategy:
-- DL Training: 10% (dl_train.json)
-- LLM Training: 60% (llm_train.json) 
-- RL Training: 12% (rl_train.json)
-- Validation: 5% (val.json)
-- Testing: 13% (test.json)
+- DL Training: 5% (dl_train.json) - ~141K samples
+- LLM Training: 25% (llm_train.json) - ~708K samples
+- RL Training: 8% (rl_train.json) - ~226K samples
+- Validation: 2% (val.json) - ~56K samples
+- Testing: 10% (test.json) - ~283K samples
+- Reserved: 50% (for future experiments)
 
 Author: AdvTG Team
 """
@@ -286,17 +287,18 @@ class CICIDS2017Processor:
         # Shuffle data for random distribution
         random.shuffle(http_data)
         
-        # Optimized data allocation strategy:
-        # - DL Training: 10% (small dataset for deep learning models)
-        # - LLM Training: 60% (large dataset for LLM fine-tuning)  
-        # - RL Training: 12% (medium dataset for reinforcement learning)
-        # - Validation: 5% (validation set for hyperparameter tuning)
-        # - Test: 13% (test set for final evaluation)
-        dl_split = 0.10      # 10% for DL training
-        llm_split = 0.60     # 60% for LLM training
-        rl_split = 0.12      # 12% for RL training
-        val_split = 0.05     # 5% for validation
-        test_split = 0.13    # 13% for testing
+        # Optimized data allocation strategy (更合理的分配):
+        # - DL Training: 5% (sufficient for deep learning models)
+        # - LLM Training: 25% (adequate for LLM fine-tuning)  
+        # - RL Training: 8% (quality over quantity for RL)
+        # - Validation: 2% (validation set for hyperparameter tuning)
+        # - Test: 10% (sufficient for final evaluation)
+        # - Reserved: 47% (保留用于后续实验或其他用途)
+        dl_split = 0.05      # 5% for DL training (~141K samples)
+        llm_split = 0.25     # 25% for LLM training (~708K samples)
+        rl_split = 0.08      # 8% for RL training (~226K samples)
+        val_split = 0.02     # 2% for validation (~56K samples)
+        test_split = 0.10    # 10% for testing (~283K samples)
         
         total_size = len(http_data)
         dl_size = int(total_size * dl_split)
@@ -330,14 +332,14 @@ class CICIDS2017Processor:
         saved_files['dl_train'] = dl_path
         print(f"✅ DL training data saved: {dl_path} ({len(dl_data)} samples, {dl_split*100}%)")
         
-        # Save LLM training data (large)
+        # Save LLM training data (moderate size)
         llm_path = os.path.join(self.dataset_dir, output_files['llm_train'])
         with open(llm_path, 'w', encoding='utf-8') as f:
             json.dump(llm_data, f, indent=2, ensure_ascii=False)
         saved_files['llm_train'] = llm_path
         print(f"✅ LLM training data saved: {llm_path} ({len(llm_data)} samples, {llm_split*100}%)")
         
-        # Save RL training data (medium)
+        # Save RL training data (compact)
         rl_path = os.path.join(self.dataset_dir, output_files['rl_train'])
         with open(rl_path, 'w', encoding='utf-8') as f:
             json.dump(rl_data, f, indent=2, ensure_ascii=False)
@@ -439,21 +441,23 @@ class CICIDS2017Processor:
         print("\n🎉 Processing completed successfully!")
         print("=" * 60)
         print("Generated files for optimized training purposes:")
-        print(f"  • DL Training (10%): {saved_files.get('dl_train', 'N/A')}")
-        print(f"  • LLM Training (60%): {saved_files.get('llm_train', 'N/A')}")
-        print(f"  • RL Training (12%): {saved_files.get('rl_train', 'N/A')}")
-        print(f"  • Validation Set (5%): {saved_files.get('val', 'N/A')}")
-        print(f"  • Test Data (13%): {saved_files.get('test', 'N/A')}")
+        print(f"  • DL Training (5%): {saved_files.get('dl_train', 'N/A')}")
+        print(f"  • LLM Training (25%): {saved_files.get('llm_train', 'N/A')}")
+        print(f"  • RL Training (8%): {saved_files.get('rl_train', 'N/A')}")
+        print(f"  • Validation Set (2%): {saved_files.get('val', 'N/A')}")
+        print(f"  • Test Data (10%): {saved_files.get('test', 'N/A')}")
         print(f"  • Full Dataset: {saved_files.get('full', 'N/A')}")
         print(f"  • Legacy Files: {saved_files.get('legacy_train', 'N/A')}, {saved_files.get('legacy_test', 'N/A')}")
         
         print("\nUsage examples:")
         print("  DL Training:")
         print("    from DL.data_processing import load_data, prepare_dataset")
-        print("    data = load_data('dataset/dl_train_small.json')")
+        print("    data = load_data('dataset/dl_train.json')  # ~141K samples")
         print("    dataset = prepare_dataset(data)")
         print("  LLM Fine-tuning:")
-        print("    # Modify LLM-Finetune/train_llama.py to use 'dataset/llm_train_large.json'")
+        print("    # Use 'dataset/llm_train.json' with ~708K samples")
+        print("  RL Training:")
+        print("    # Use 'dataset/rl_train.json' with ~226K samples")
         
         return True
 
@@ -468,11 +472,12 @@ def main():
     if success:
         print("\n✅ All done! Your CICIDS2017 data is ready for AdvTG training.")
         print("📊 Optimized data split summary:")
-        print("  • DL models will use: dl_train.json (10% of data)")
-        print("  • LLM fine-tuning will use: llm_train.json (60% of data)")
-        print("  • RL training will use: rl_train.json (12% of data)")
-        print("  • All models will validate on: val.json (5% of data)")
-        print("  • Final evaluation will use: test.json (13% of data)")
+        print("  • DL models will use: dl_train.json (5% = ~141K samples)")
+        print("  • LLM fine-tuning will use: llm_train.json (25% = ~708K samples)")
+        print("  • RL training will use: rl_train.json (8% = ~226K samples)")
+        print("  • All models will validate on: val.json (2% = ~56K samples)")
+        print("  • Final evaluation will use: test.json (10% = ~283K samples)")
+        print("  • Reserved for future use: 50% = ~1.33M samples")
     else:
         print("\n❌ Processing failed. Please check the error messages above.")
         return 1
