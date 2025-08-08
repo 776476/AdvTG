@@ -42,7 +42,7 @@ def main():
     FORCE_SIMPLE_MODE = False  # Set to True to skip BERT and only use custom models
     
     # Define constants
-    DATA_PATH = "../dataset/dl_train_small.json"  # Use small dataset for DL training
+    DATA_PATH = "../dataset/dl_train.json"  # Use small dataset for DL training
     MAX_LENGTH = 512
     BATCH_SIZE = 16
     LEARNING_RATE = 2e-5
