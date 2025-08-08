@@ -57,6 +57,8 @@ def main():
         # First try to load from cache or with mirror
         tokenizer = load_tokenizer(transformer_model_name)
         print("Successfully loaded tokenizer")
+        print(f"Tokenizer type: {type(tokenizer)}")
+        print(f"Is SimpleTokenizer: {isinstance(tokenizer, SimpleTokenizer)}")
     except Exception as e:
         print(f"Failed to download model: {e}")
         print("Using simple tokenizer for offline training...")
