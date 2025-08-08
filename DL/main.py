@@ -16,6 +16,9 @@ def set_environment():
     # os.environ['HTTPS_PROXY'] = '127.0.0.1:7890'
     os.environ["NCCL_P2P_DISABLE"] = "1"
     os.environ["NCCL_IB_DISABLE"] = "1"
+    
+    # Set Hugging Face mirror for Chinese users
+    os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
 def main():
     # Set environment variables
@@ -42,7 +45,9 @@ def main():
     
     # Train transformer model (BERT)
     print("\n====== Training BERT Model ======")
+    # Use Chinese mirror or local cache
     transformer_model_name = "bert-base-uncased"
+    print(f"Downloading model from: {os.environ.get('HF_ENDPOINT', 'https://huggingface.co')}")
     tokenizer = load_tokenizer(transformer_model_name)
     
     # Prepare dataset for transformer model
