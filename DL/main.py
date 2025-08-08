@@ -7,11 +7,62 @@ os.environ["HF_HUB_ENDPOINT"] = "https://hf-mirror.com"
 os.environ["HUGGINGFACE_HUB_URL"] = "https://hf-mirror.com"
 
 import torch
-from transformers import TrainingArguments
+from transformers import TrainingArguments, TrainerCallback
 
 from models import CNNLSTMClassifier, TextCNNClassifier, DNNClassifier, DeepLog
 from data_processing import load_data, prepare_dataset, load_tokenizer, SimpleTokenizer
 from training import train_transformer_model, train_custom_model
+
+# 创建SwanLab回调函数用于实时记录DL训练过程
+class DLSwanLabCallback(TrainerCallback):
+    def __init__(self, use_swanlab=False, model_name=""):
+        self.use_swanlab = use_swanlab
+        self.model_name = model_name
+    
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        """在每次日志记录时调用"""
+        if self.use_swanlab and logs and 'swanlab' in globals():
+            try:
+                # 记录损失和学习率
+                log_dict = {}
+                if 'loss' in logs:
+                    log_dict[f'{self.model_name}_train_loss'] = logs['loss']
+                if 'learning_rate' in logs:
+                    log_dict[f'{self.model_name}_learning_rate'] = logs['learning_rate']
+                if 'epoch' in logs:
+                    log_dict[f'{self.model_name}_epoch'] = logs['epoch']
+                if 'eval_loss' in logs:
+                    log_dict[f'{self.model_name}_eval_loss'] = logs['eval_loss']
+                if 'eval_accuracy' in logs:
+                    log_dict[f'{self.model_name}_eval_accuracy'] = logs['eval_accuracy']
+                if 'eval_f1' in logs:
+                    log_dict[f'{self.model_name}_eval_f1'] = logs['eval_f1']
+                
+                # 添加step信息
+                log_dict['step'] = state.global_step
+                log_dict['model'] = self.model_name
+                
+                if log_dict:
+                    swanlab.log(log_dict)
+                    print(f"📊 {self.model_name} Step {state.global_step}: Loss: {logs.get('loss', 'N/A')}")
+                    
+            except Exception as e:
+                print(f"⚠️  SwanLab logging error for {self.model_name}: {e}")
+    
+    def on_evaluate(self, args, state, control, logs=None, **kwargs):
+        """在评估时调用"""
+        if self.use_swanlab and logs and 'swanlab' in globals():
+            try:
+                eval_dict = {}
+                for k, v in logs.items():
+                    if k.startswith('eval_'):
+                        eval_dict[f'{self.model_name}_{k}'] = v
+                
+                if eval_dict:
+                    swanlab.log(eval_dict)
+                    print(f"📊 {self.model_name} Evaluation: {eval_dict}")
+            except Exception as e:
+                print(f"⚠️  SwanLab eval logging error for {self.model_name}: {e}")
 
 def set_environment():
     """Set environment variables for GPU usage."""
@@ -132,12 +183,16 @@ def main():
     
     if not isinstance(tokenizer, SimpleTokenizer):
         try:
+            # 创建BERT专用的SwanLab回调
+            bert_callback = DLSwanLabCallback(use_swanlab=use_swanlab, model_name="BERT") if use_swanlab else None
+            
             bert_save_path, bert_config = train_transformer_model(
                 transformer_model_name,
                 transformer_model_name,  # model_path parameter 
                 train_dataset, 
                 val_dataset, 
-                transformer_training_args
+                transformer_training_args,
+                swanlab_callback=bert_callback  # 传递回调函数
             )
             all_model_configs.append(bert_config)
             print("BERT model training completed!")
@@ -178,6 +233,22 @@ def main():
             save_path, model_config = train_custom_model(model, model_name, train_dataset, val_dataset, custom_training_args)
             all_model_configs.append(model_config)
             print(f"Completed training model: {model_name}")
+            
+            # 手动记录自定义模型的结果到SwanLab
+            if use_swanlab and 'swanlab' in locals():
+                try:
+                    swanlab.log({
+                        f'{model_name}_final_accuracy': model_config.get('accuracy', 0),
+                        f'{model_name}_final_precision': model_config.get('precision', 0),
+                        f'{model_name}_final_recall': model_config.get('recall', 0),
+                        f'{model_name}_final_f1': model_config.get('f1', 0),
+                        'model_type': 'custom',
+                        'model_name': model_name
+                    })
+                    print(f"📊 {model_name} results logged to SwanLab")
+                except Exception as e:
+                    print(f"⚠️  SwanLab logging failed for {model_name}: {e}")
+            
         except Exception as e:
             print(f"Failed to train {model_name}: {e}")
     

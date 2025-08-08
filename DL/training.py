@@ -20,12 +20,17 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Define default model save path
 MODEL_PATH = "../models/"
 
-def train_transformer_model(model_name, model_path, train_dataset, eval_dataset, training_args):
+def train_transformer_model(model_name, model_path, train_dataset, eval_dataset, training_args, swanlab_callback=None):
     """Train a transformer model."""
     # Load model and tokenizer
     model = AutoModelForSequenceClassification.from_pretrained(model_path)
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
+
+    # 准备回调函数列表
+    callbacks = []
+    if swanlab_callback:
+        callbacks.append(swanlab_callback)
 
     # Define trainer
     trainer = Trainer(
@@ -35,7 +40,8 @@ def train_transformer_model(model_name, model_path, train_dataset, eval_dataset,
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        compute_metrics=transformer_metrics
+        compute_metrics=transformer_metrics,
+        callbacks=callbacks  # 添加回调函数
     )
 
     # Train model

@@ -101,6 +101,9 @@ def main():
     
     # Training loop
     all_data = []
+    reward_history = []  # 记录奖励历史
+    loss_history = []    # 记录损失历史
+    
     for epoch, batch in tqdm(enumerate(dataloader)):
         # Prepare query tensors
         query_tensors, origin_label, requirement_label, new_query_str = prepare_query_tensors(
@@ -141,22 +144,50 @@ def main():
         stats = ppo_trainer.step(query_tensors, response_tensors, rewards_list)
         ppo_trainer.log_stats(stats, batch, rewards, columns_to_log=columns_to_log)
         
-        # Log to SwanLab every few steps
-        if use_swanlab and 'swanlab' in locals() and epoch % 10 == 0:
+        # 记录奖励和损失历史
+        avg_reward = torch.mean(rewards).item()
+        reward_history.append(avg_reward)
+        
+        # Log to SwanLab every few steps with enhanced metrics
+        if use_swanlab and 'swanlab' in locals():
             try:
-                avg_reward = torch.mean(rewards).item()
                 max_reward = torch.max(rewards).item()
                 min_reward = torch.min(rewards).item()
+                std_reward = torch.std(rewards).item()
                 
-                swanlab.log({
+                # 计算移动平均奖励
+                window_size = min(10, len(reward_history))
+                moving_avg_reward = sum(reward_history[-window_size:]) / window_size
+                
+                log_dict = {
                     "epoch": epoch,
                     "average_reward": avg_reward,
                     "max_reward": max_reward,
                     "min_reward": min_reward,
-                    "policy_loss": stats.get('ppo/policy/loss', 0),
-                    "value_loss": stats.get('ppo/val/loss', 0),
-                    "feature_type": feature_type
-                })
+                    "std_reward": std_reward,
+                    "moving_avg_reward": moving_avg_reward,
+                    "feature_type": feature_type,
+                    "batch_size": len(batch['instruction'])
+                }
+                
+                # 记录PPO统计信息
+                if 'ppo/policy/loss' in stats:
+                    log_dict['policy_loss'] = stats['ppo/policy/loss']
+                if 'ppo/val/loss' in stats:
+                    log_dict['value_loss'] = stats['ppo/val/loss']
+                if 'ppo/policy/entropy' in stats:
+                    log_dict['policy_entropy'] = stats['ppo/policy/entropy']
+                if 'ppo/policy/approx_kl' in stats:
+                    log_dict['approx_kl'] = stats['ppo/policy/approx_kl']
+                
+                swanlab.log(log_dict)
+                
+                # 每10个epoch打印详细信息
+                if epoch % 10 == 0:
+                    print(f"📊 Epoch {epoch}: Avg Reward: {avg_reward:.4f}, "
+                          f"Moving Avg: {moving_avg_reward:.4f}, "
+                          f"Std: {std_reward:.4f}")
+                    
             except Exception as e:
                 print(f"⚠️  SwanLab logging failed at epoch {epoch}: {e}")
         

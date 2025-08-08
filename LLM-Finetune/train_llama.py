@@ -184,8 +184,54 @@ train_dataset = train_dataset.map(formatting_prompts_func, batched=True)
 val_dataset = val_dataset.map(formatting_prompts_func, batched=True)
 
 from trl import SFTTrainer
-from transformers import TrainingArguments
+from transformers import TrainingArguments, TrainerCallback
 from unsloth import is_bfloat16_supported
+
+# 创建SwanLab回调函数用于实时记录训练过程
+class SwanLabCallback(TrainerCallback):
+    def __init__(self, use_swanlab=False):
+        self.use_swanlab = use_swanlab
+    
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        """在每次日志记录时调用"""
+        if self.use_swanlab and logs and 'swanlab' in globals():
+            try:
+                # 记录损失和学习率
+                log_dict = {}
+                if 'loss' in logs:
+                    log_dict['train_loss'] = logs['loss']
+                if 'learning_rate' in logs:
+                    log_dict['learning_rate'] = logs['learning_rate']
+                if 'epoch' in logs:
+                    log_dict['epoch'] = logs['epoch']
+                if 'eval_loss' in logs:
+                    log_dict['eval_loss'] = logs['eval_loss']
+                if 'grad_norm' in logs:
+                    log_dict['grad_norm'] = logs['grad_norm']
+                
+                # 添加step信息
+                log_dict['step'] = state.global_step
+                
+                if log_dict:
+                    swanlab.log(log_dict)
+                    print(f"📊 Step {state.global_step}: Logged to SwanLab - Loss: {logs.get('loss', 'N/A')}")
+                    
+            except Exception as e:
+                print(f"⚠️  SwanLab logging error: {e}")
+    
+    def on_evaluate(self, args, state, control, logs=None, **kwargs):
+        """在评估时调用"""
+        if self.use_swanlab and logs and 'swanlab' in globals():
+            try:
+                eval_dict = {f"eval_{k}": v for k, v in logs.items() if k.startswith('eval_')}
+                if eval_dict:
+                    swanlab.log(eval_dict)
+                    print(f"📊 Evaluation logged to SwanLab: {eval_dict}")
+            except Exception as e:
+                print(f"⚠️  SwanLab eval logging error: {e}")
+
+# 初始化回调函数
+swanlab_callback = SwanLabCallback(use_swanlab=use_swanlab)
 
 # 设置环境变量以禁用 NCCL 中的 P2P 和 IB
 os.environ['NCCL_P2P_DISABLE'] = '1'
@@ -202,6 +248,7 @@ trainer = SFTTrainer(
     max_seq_length = max_seq_length,
     dataset_num_proc = 2,
     packing = False, # Can make training 5x faster for short sequences.
+    callbacks=[swanlab_callback] if use_swanlab else [],  # 添加SwanLab回调
     args = TrainingArguments(
         per_device_train_batch_size = 8,
         gradient_accumulation_steps = 64,
@@ -217,8 +264,12 @@ trainer = SFTTrainer(
         seed = 3407,
         output_dir = "../models/lamma_outputs",
         save_strategy="steps",
-        save_steps=100,  # 每500步保存一次模型
-        save_total_limit=2
+        save_steps=100,  # 每100步保存一次模型
+        save_total_limit=2,
+        report_to="none",  # 禁用所有自动日志记录
+        eval_strategy="steps",  # 添加评估策略
+        eval_steps=50,  # 每50步评估一次
+        logging_dir="../models/lamma_outputs/logs",  # 设置日志目录
     ),
 )
 
