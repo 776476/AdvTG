@@ -1,5 +1,5 @@
 import numpy as np
-from datasets import load_metric
+from evaluate import load as load_metric
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 
 # Metrics for transformer models
