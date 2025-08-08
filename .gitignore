@@ -1,0 +1,128 @@
+# AdvTG Project .gitignore
+# =========================
+
+# Dataset files - processed data (large files)
+# Keep only compressed archives and processing scripts
+dataset/*.json
+dataset/cicids2017_*.json
+dataset/train_data*.json
+dataset/test*.json
+dataset/*_clean.json
+
+# Extracted dataset directories
+dataset/MachineLearningCVE/
+dataset/GeneratedLabelledFlows/
+
+# Temporary processing files
+dataset/temp/
+dataset/processed/
+dataset/cache/
+
+# Large dataset files - exclude from repository
+dataset/MachineLearningCSV.zip
+dataset/GeneratedLabelledFlows.zip
+
+# Keep these dataset files:
+# dataset/*.md (documentation)
+# dataset/*.py (processing scripts)
+# dataset/README* (readme files)
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyTorch
+*.pth
+*.pt
+checkpoints/
+saved_models/
+model_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Model outputs
+outputs/
+results/
+experiments/
+
+# Large data files (>100MB should use Git LFS)
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Temporary files
+*.tmp
+*.temp
