@@ -2,9 +2,9 @@ import os
 import torch
 from transformers import TrainingArguments
 
-from DL.models import CNNLSTMClassifier, TextCNNClassifier, DNNClassifier, DeepLog
-from DL.data_processing import load_data, prepare_dataset, load_tokenizer
-from DL.training import train_transformer_model, train_custom_model
+from models import CNNLSTMClassifier, TextCNNClassifier, DNNClassifier, DeepLog
+from data_processing import load_data, prepare_dataset, load_tokenizer
+from training import train_transformer_model, train_custom_model
 
 def set_environment():
     """Set environment variables for GPU usage."""

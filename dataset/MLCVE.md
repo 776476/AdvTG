@@ -25,7 +25,7 @@ You need to manually download the following files:
 1. Download the required files to the `dataset/` directory:
    ```bash
    cd dataset/
-   wget http://cicresearch.ca/CICDataset/CIC-IDS-2017/MachineLearningCSV.zip
+   wget http://cicresearch.ca/CICDataset/CIC-IDS-2017/Dataset/CIC-IDS-2017/CSVs/MachineLearningCSV.zip
    ```
 
 2. Run the processing script:
