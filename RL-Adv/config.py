@@ -5,8 +5,8 @@ from trl import PPOConfig
 # Environment variables
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
-os.environ['HTTP_PROXY'] = '127.0.0.1:7890'
-os.environ['HTTPS_PROXY'] = '127.0.0.1:7890'
+# os.environ['HTTP_PROXY'] = '127.0.0.1:7890'
+# os.environ['HTTPS_PROXY'] = '127.0.0.1:7890'
 os.environ["NCCL_P2P_DISABLE"] = "1"
 os.environ["NCCL_IB_DISABLE"] = "1"
 
@@ -14,10 +14,10 @@ os.environ["NCCL_IB_DISABLE"] = "1"
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Model paths
-model_name_or_path = "your LLM's path"
+model_name_or_path = "../models/lamma_outputs"
 
 # Features dictionary
-features_dict = {"Image": "../model/imgae_model_configs.pkl", "Text": "../model/model_configs.pkl"}
+features_dict = {"Image": "../models/image_model_configs.pkl", "Text": "../models/model_configs.pkl"}
 
 # PPO Configuration
 def create_ppo_config():

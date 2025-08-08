@@ -7,6 +7,7 @@ from trl.core import LengthSampler
 import torch.nn.functional as F
 
 # Import from local modules
+from environment import set_environment, check_dependencies
 from config import *
 from data_utils import load_http_dataset, create_dataloader, text2image
 from model_utils import select_feature_model_type, setup_models, prepare_query_tensors, evaluate_responses
@@ -16,8 +17,21 @@ def main():
     """
     Main function to run PPO training.
     """
+    print("🚀 Starting RL-Adv PPO Training...")
+    print("=" * 60)
+    
+    # Check dependencies first
+    if not check_dependencies():
+        print("❌ Please install missing dependencies and try again.")
+        return False
+    
+    # Set environment variables and get device
+    device = set_environment()
+    
     # Set random seed for reproducibility
     set_seed(42)
+    
+    print("\n📊 Loading configuration and data...")
     
     # Create PPO configuration
     config = create_ppo_config()
@@ -28,20 +42,27 @@ def main():
     # Create dataloader
     dataloader = create_dataloader(dataset)
     
-    # Set up models
+    print("\n🔧 Setting up models...")
+    
+    # Setup models
     ppo_model, ref_model, tokenizer = setup_models(config.model_name, device)
+    
+    # Import configuration from config.py
+    from config import (
+        generation_kwargs, output_min_length, output_max_length, 
+        max_length, query_max_length, columns_to_log, features_dict
+    )
     
     # Update generation_kwargs with tokenizer pad token ID
     generation_kwargs["pad_token_id"] = tokenizer.eos_token_id
     
-    # Initialize PPO trainer
-    ppo_trainer = PPOTrainer(config, ppo_model, ref_model, tokenizer, dataset=dataset)
-    
-    # Select feature model type
+    # Configuration parameters (using config from config.py)
     feature_type, model_configs = select_feature_model_type(features_dict)
     
-    # Create output length sampler
     output_length_sampler = LengthSampler(output_min_length, output_max_length)
+    
+    # Initialize PPO trainer
+    ppo_trainer = PPOTrainer(config, ppo_model, ref_model, tokenizer, dataset=dataset)
     
     # Set save path
     save_path = os.path.join("../model/ppo_model/", feature_type)
@@ -51,7 +72,7 @@ def main():
     test_tokenizer = None
     if feature_type == "Text":
         from transformers import AutoTokenizer
-        test_tokenizer = AutoTokenizer.from_pretrained("../model/bert/")
+        test_tokenizer = AutoTokenizer.from_pretrained("../models/bert/")
     
     # Training loop
     all_data = []
@@ -123,6 +144,20 @@ def main():
             
             # Reset data collection
             all_data = []
+    
+    print("\n🎉 RL-Adv PPO training completed successfully!")
+    print("=" * 60)
+    print(f"📁 Models saved to: {save_path}")
+    print("✅ All training stages completed.")
+    
+    return True
 
 if __name__ == "__main__":
-    main() 
+    import sys
+    success = main()
+    if success:
+        print("\n✅ RL-Adv training finished successfully!")
+        sys.exit(0)
+    else:
+        print("\n❌ RL-Adv training failed. Please check the error messages above.")
+        sys.exit(1) 

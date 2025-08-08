@@ -57,8 +57,8 @@ def main():
     json_data = load_data(DATA_PATH)
     
     # Create models directory
-    os.makedirs('./models', exist_ok=True)
-    os.makedirs('./models/custom_models', exist_ok=True)
+    os.makedirs('../models', exist_ok=True)
+    os.makedirs('../models/custom_models', exist_ok=True)
     
     # Train transformer model (BERT)
     print("\n====== Training BERT Model ======")
@@ -99,14 +99,18 @@ def main():
     )
         
     # Only train transformer model if we have real transformers tokenizer
+    all_model_configs = []  # 收集所有模型配置
+    
     if not isinstance(tokenizer, SimpleTokenizer):
         try:
-            transformer_trainer = train_transformer_model(
-                transformer_model_name, 
+            bert_save_path, bert_config = train_transformer_model(
+                transformer_model_name,
+                transformer_model_name,  # model_path parameter 
                 train_dataset, 
                 val_dataset, 
                 transformer_training_args
             )
+            all_model_configs.append(bert_config)
             print("BERT model training completed!")
         except Exception as e:
             print(f"BERT training failed: {e}")
@@ -128,7 +132,7 @@ def main():
     }
     
     custom_training_args = TrainingArguments(
-        output_dir="./models/custom_models",
+        output_dir="../models/custom_models",
         per_device_train_batch_size=BATCH_SIZE,
         per_device_eval_batch_size=BATCH_SIZE,
         learning_rate=LEARNING_RATE,
@@ -136,13 +140,31 @@ def main():
     )
     
     print("\n====== Training Custom Models ======")
+    
     for model_name, model in models.items():
         print(f"\nTraining model: {model_name}")
         try:
-            train_custom_model(model, model_name, train_dataset, val_dataset, custom_training_args)
+            save_path, model_config = train_custom_model(model, model_name, train_dataset, val_dataset, custom_training_args)
+            all_model_configs.append(model_config)
             print(f"Completed training model: {model_name}")
         except Exception as e:
             print(f"Failed to train {model_name}: {e}")
+    
+    # Save model configurations for RL stage
+    import pickle
+    config_save_path = "../models/model_configs.pkl"
+    os.makedirs(os.path.dirname(config_save_path), exist_ok=True)
+    
+    with open(config_save_path, 'wb') as f:
+        pickle.dump(all_model_configs, f)
+    
+    # Create image model configurations (placeholder)
+    from create_image_configs import create_image_model_configs
+    create_image_model_configs()
+    
+    print(f"\n✅ Saved text model configurations to: {config_save_path}")
+    print(f"📊 Total text models configured: {len(all_model_configs)}")
+    print("✅ Created image model configurations")
     
     print("\nAll models training completed!")
 

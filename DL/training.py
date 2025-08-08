@@ -18,7 +18,7 @@ from metrics import transformer_metrics, custom_metrics
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Define default model save path
-MODEL_PATH = "./models/"
+MODEL_PATH = "../models/"
 
 def train_transformer_model(model_name, model_path, train_dataset, eval_dataset, training_args):
     """Train a transformer model."""
@@ -41,11 +41,28 @@ def train_transformer_model(model_name, model_path, train_dataset, eval_dataset,
     # Train model
     trainer.train()
     
+    # Evaluate model to get metrics
+    eval_results = trainer.evaluate()
+    
     # Save model
     save_path = f"{MODEL_PATH}/{model_name}"
     os.makedirs(save_path, exist_ok=True)
     trainer.save_model(save_path)
     tokenizer.save_pretrained(save_path)
+    
+    # Create model configuration for RL stage
+    model_config = {
+        "model_name": model_name,
+        "model_path": save_path,
+        "model_type": "transformer",
+        "tokenizer_path": save_path,
+        "num_labels": model.num_labels,
+        "eval_loss": eval_results.get("eval_loss", 0),
+        "eval_accuracy": eval_results.get("eval_accuracy", 0),
+        "eval_f1": eval_results.get("eval_f1", 0),
+        "eval_precision": eval_results.get("eval_precision", 0),
+        "eval_recall": eval_results.get("eval_recall", 0)
+    }
 
     # Clean up
     del model
@@ -54,7 +71,7 @@ def train_transformer_model(model_name, model_path, train_dataset, eval_dataset,
     torch.cuda.empty_cache()
     gc.collect()
     
-    return save_path
+    return save_path, model_config
 
 def train_custom_model(model, model_name, train_dataset, eval_dataset, training_args):
     """Train a custom model."""
@@ -113,10 +130,25 @@ def train_custom_model(model, model_name, train_dataset, eval_dataset, training_
     save_path = f"{MODEL_PATH}/custom_models/{model_name}"
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     torch.save(model.state_dict(), save_path + ".bin")
+    
+    # Return model configuration for RL stage
+    model_config = {
+        "model_name": model_name,
+        "model_path": save_path + ".bin",
+        "vocab_size": model.vocab_size if hasattr(model, 'vocab_size') else None,
+        "embed_size": model.embed_size if hasattr(model, 'embed_size') else None,
+        "num_classes": model.num_classes if hasattr(model, 'num_classes') else None,
+        "max_length": model.max_length if hasattr(model, 'max_length') else None,
+        "model_type": "custom",
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1
+    }
 
     # Clean up
     del model
     torch.cuda.empty_cache()
     gc.collect()
     
-    return save_path 
+    return save_path, model_config 
