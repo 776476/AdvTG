@@ -9,7 +9,7 @@ numpy>=1.22.0
 # Visualization and progress tracking
 matplotlib>=3.5.0
 tqdm>=4.64.0
-wandb>=0.13.0 
+swanlab>=0.3.0  # Replace wandb with swanlab for better China network support
 evaluate>=0.4.0
 
 # Reinforcement Learning (RL-Adv stage)

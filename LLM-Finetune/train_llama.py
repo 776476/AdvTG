@@ -7,6 +7,35 @@ os.environ["HUGGINGFACE_HUB_ENDPOINT"] = "https://hf-mirror.com"
 os.environ["HF_HUB_ENDPOINT"] = "https://hf-mirror.com"
 os.environ["HUGGINGFACE_HUB_URL"] = "https://hf-mirror.com"
 
+# Disable wandb and enable swanlab
+os.environ["WANDB_DISABLED"] = "true"
+os.environ["WANDB_MODE"] = "disabled"
+os.environ["WANDB_SILENT"] = "true"
+
+# Initialize SwanLab for LLM fine-tuning tracking
+try:
+    import swanlab
+    swanlab.init(
+        project="AdvTG-LLM-Finetune",
+        description="LLM Fine-tuning stage - Llama-3-8B with LoRA",
+        config={
+            "model_name": "unsloth/llama-3-8b-bnb-4bit",
+            "max_seq_length": 2048,
+            "learning_rate": 2e-4,
+            "lora_r": 16,
+            "lora_alpha": 16,
+            "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+        }
+    )
+    print("✅ SwanLab initialized for LLM fine-tuning!")
+    use_swanlab = True
+except ImportError:
+    print("⚠️  SwanLab not installed, continuing without experiment tracking")
+    use_swanlab = False
+except Exception as e:
+    print(f"⚠️  SwanLab initialization failed: {e}")
+    use_swanlab = False
+
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 # 设置代理环境变量 (如果代理不可用则注释掉)
@@ -195,3 +224,28 @@ trainer = SFTTrainer(
 
 
 trainer_stats = trainer.train()
+
+# Log training results to SwanLab
+if use_swanlab and 'swanlab' in locals():
+    try:
+        # Log training statistics
+        if hasattr(trainer_stats, 'training_loss'):
+            swanlab.log({"training_loss": trainer_stats.training_loss})
+        if hasattr(trainer_stats, 'train_runtime'):
+            swanlab.log({"train_runtime": trainer_stats.train_runtime})
+        if hasattr(trainer_stats, 'train_samples_per_second'):
+            swanlab.log({"train_samples_per_second": trainer_stats.train_samples_per_second})
+        
+        # Log model info
+        swanlab.log({
+            "model_name": "llama-3-8b",
+            "fine_tuning_method": "LoRA",
+            "training_completed": 1
+        })
+        
+        swanlab.finish()
+        print("📊 LLM training results logged to SwanLab successfully!")
+    except Exception as e:
+        print(f"⚠️  SwanLab logging failed: {e}")
+
+print("✅ LLM fine-tuning completed!")

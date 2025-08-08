@@ -20,6 +20,31 @@ def main():
     print("🚀 Starting RL-Adv PPO Training...")
     print("=" * 60)
     
+    # Initialize SwanLab for RL training tracking
+    try:
+        import swanlab
+        swanlab.init(
+            project="AdvTG-RL-Training",
+            description="RL Adversarial Training stage - PPO with reward feedback",
+            config={
+                "algorithm": "PPO",
+                "learning_rate": 1.41e-5,
+                "batch_size": 4,
+                "mini_batch_size": 1,
+                "gradient_accumulation_steps": 4,
+                "output_min_length": 128,
+                "output_max_length": 256
+            }
+        )
+        print("✅ SwanLab initialized for RL training!")
+        use_swanlab = True
+    except ImportError:
+        print("⚠️  SwanLab not installed, continuing without experiment tracking")
+        use_swanlab = False
+    except Exception as e:
+        print(f"⚠️  SwanLab initialization failed: {e}")
+        use_swanlab = False
+    
     # Check dependencies first
     if not check_dependencies():
         print("❌ Please install missing dependencies and try again.")
@@ -116,6 +141,25 @@ def main():
         stats = ppo_trainer.step(query_tensors, response_tensors, rewards_list)
         ppo_trainer.log_stats(stats, batch, rewards, columns_to_log=columns_to_log)
         
+        # Log to SwanLab every few steps
+        if use_swanlab and 'swanlab' in locals() and epoch % 10 == 0:
+            try:
+                avg_reward = torch.mean(rewards).item()
+                max_reward = torch.max(rewards).item()
+                min_reward = torch.min(rewards).item()
+                
+                swanlab.log({
+                    "epoch": epoch,
+                    "average_reward": avg_reward,
+                    "max_reward": max_reward,
+                    "min_reward": min_reward,
+                    "policy_loss": stats.get('ppo/policy/loss', 0),
+                    "value_loss": stats.get('ppo/val/loss', 0),
+                    "feature_type": feature_type
+                })
+            except Exception as e:
+                print(f"⚠️  SwanLab logging failed at epoch {epoch}: {e}")
+        
         # Clean up memory
         torch.cuda.empty_cache()
         
@@ -149,6 +193,20 @@ def main():
     print("=" * 60)
     print(f"📁 Models saved to: {save_path}")
     print("✅ All training stages completed.")
+    
+    # Finalize SwanLab logging
+    if use_swanlab and 'swanlab' in locals():
+        try:
+            swanlab.log({
+                "training_completed": 1,
+                "total_epochs": epoch + 1,
+                "feature_type_used": feature_type,
+                "final_save_path": save_path
+            })
+            swanlab.finish()
+            print("📊 RL training results logged to SwanLab successfully!")
+        except Exception as e:
+            print(f"⚠️  SwanLab finalization failed: {e}")
     
     return True
 

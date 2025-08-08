@@ -31,7 +31,7 @@ def create_ppo_config():
         use_score_scaling=True,  # scaling
         use_score_norm=True,  # normalization
         score_clip=1,
-        log_with="wandb"
+        log_with=None  # Disable wandb, use manual logging with SwanLab
     )
 
 # Generation configurations

@@ -38,6 +38,33 @@ def main():
     # Set environment variables
     set_environment()
     
+    # Disable wandb completely and enable swanlab
+    os.environ["WANDB_DISABLED"] = "true"
+    os.environ["WANDB_MODE"] = "disabled"
+    os.environ["WANDB_SILENT"] = "true"
+    
+    # Initialize SwanLab for experiment tracking
+    try:
+        import swanlab
+        swanlab.init(
+            project="AdvTG-DL-Training",
+            description="Deep Learning stage - BERT and Custom Models Training",
+            config={
+                "batch_size": 16,
+                "learning_rate": 2e-5,
+                "num_epochs": 3,
+                "max_length": 512
+            }
+        )
+        print("✅ SwanLab initialized successfully!")
+        use_swanlab = True
+    except ImportError:
+        print("⚠️  SwanLab not installed, continuing without experiment tracking")
+        use_swanlab = False
+    except Exception as e:
+        print(f"⚠️  SwanLab initialization failed: {e}, continuing without experiment tracking")
+        use_swanlab = False
+    
     # Configuration
     FORCE_SIMPLE_MODE = False  # Set to True to skip BERT and only use custom models
     
@@ -96,6 +123,8 @@ def main():
         eval_strategy="epoch",  # Changed from evaluation_strategy
         save_strategy="epoch",
         load_best_model_at_end=True,
+        report_to="none",  # Disable all automatic logging including wandb
+        logging_steps=50,  # Log every 50 steps for manual tracking
     )
         
     # Only train transformer model if we have real transformers tokenizer
@@ -137,6 +166,8 @@ def main():
         per_device_eval_batch_size=BATCH_SIZE,
         learning_rate=LEARNING_RATE,
         num_train_epochs=NUM_EPOCHS,
+        report_to="none",  # Disable all automatic logging including wandb
+        logging_steps=50,  # Log every 50 steps for manual tracking
     )
     
     print("\n====== Training Custom Models ======")
@@ -161,6 +192,32 @@ def main():
     # Create image model configurations (placeholder)
     from create_image_configs import create_image_model_configs
     create_image_model_configs()
+    
+    # Log results to SwanLab if available
+    if use_swanlab and 'swanlab' in locals():
+        try:
+            # Log model performance metrics
+            for i, config in enumerate(all_model_configs):
+                model_name = config.get('model_name', f'model_{i}')
+                if 'accuracy' in config:
+                    swanlab.log({f"{model_name}/accuracy": config['accuracy']})
+                if 'f1' in config:
+                    swanlab.log({f"{model_name}/f1_score": config['f1']})
+                if 'precision' in config:
+                    swanlab.log({f"{model_name}/precision": config['precision']})
+                if 'recall' in config:
+                    swanlab.log({f"{model_name}/recall": config['recall']})
+            
+            # Log summary metrics
+            swanlab.log({
+                "total_models_trained": len(all_model_configs),
+                "training_completed": 1
+            })
+            
+            swanlab.finish()
+            print("📊 Results logged to SwanLab successfully!")
+        except Exception as e:
+            print(f"⚠️  SwanLab logging failed: {e}")
     
     print(f"\n✅ Saved text model configurations to: {config_save_path}")
     print(f"📊 Total text models configured: {len(all_model_configs)}")
