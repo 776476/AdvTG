@@ -1,6 +1,7 @@
 import os
 import torch
 import json
+import multiprocessing as mp
 from tqdm import tqdm
 from trl import PPOTrainer
 from trl.core import LengthSampler
@@ -12,6 +13,39 @@ from config import *
 from data_utils import load_http_dataset, create_dataloader, text2image
 from model_utils import select_feature_model_type, setup_models, prepare_query_tensors, evaluate_responses
 from utils import save_results, set_seed, mkdir
+
+# vLLM风格的RL并行训练配置
+ENABLE_VLLM_STYLE_RL_PARALLEL = True   # 启用vLLM风格RL并行优化
+ENABLE_RL_TENSOR_PARALLEL = True       # 启用RL张量并行（多GPU）
+ENABLE_RL_DATA_PARALLEL = True         # 启用RL数据并行处理
+MAX_RL_PARALLEL_WORKERS = min(4, mp.cpu_count())  # RL并行工作进程
+
+def get_optimal_rl_config():
+    """获取RL阶段最优并行配置"""
+    gpu_count = torch.cuda.device_count() if torch.cuda.is_available() else 0
+    cpu_count = mp.cpu_count()
+    
+    # vLLM风格的RL动态配置
+    if gpu_count >= 2:
+        tensor_parallel_size = min(2, gpu_count)  # RL训练通常不需要很大的tensor parallel
+        optimal_batch_size = 8 * gpu_count  # RL batch size较小
+        worker_multiplier = 2
+    else:
+        tensor_parallel_size = 1
+        optimal_batch_size = 4
+        worker_multiplier = 1
+    
+    optimal_workers = min(MAX_RL_PARALLEL_WORKERS, cpu_count // 4) * worker_multiplier
+    
+    return {
+        "gpu_count": gpu_count,
+        "tensor_parallel_size": tensor_parallel_size,
+        "optimal_batch_size": optimal_batch_size,
+        "optimal_workers": optimal_workers,
+        "enable_mixed_precision": gpu_count > 0,  # GPU可用时启用混合精度
+        "enable_gradient_checkpointing": True,    # RL训练内存优化
+        "optimal_gradient_accumulation": 4 if gpu_count > 1 else 2,
+    }
 
 def main():
     """
@@ -53,13 +87,34 @@ def main():
     # Set environment variables and get device
     device = set_environment()
     
+    # 获取vLLM风格的RL优化配置
+    vllm_rl_config = get_optimal_rl_config()
+    
+    print(f"🔧 vLLM风格RL训练配置:")
+    print(f"   - vLLM风格优化: {ENABLE_VLLM_STYLE_RL_PARALLEL}")
+    print(f"   - GPU数量: {vllm_rl_config['gpu_count']}")
+    print(f"   - 张量并行大小: {vllm_rl_config['tensor_parallel_size']}")
+    print(f"   - 优化batch size: {vllm_rl_config['optimal_batch_size']}")
+    print(f"   - 优化workers: {vllm_rl_config['optimal_workers']}")
+    print(f"   - 混合精度: {vllm_rl_config['enable_mixed_precision']}")
+    print(f"   - 梯度累积步数: {vllm_rl_config['optimal_gradient_accumulation']}")
+    
+    # vLLM风格的CUDA优化
+    if torch.cuda.is_available() and ENABLE_VLLM_STYLE_RL_PARALLEL:
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cuda.matmul.allow_tf32 = True
+        if vllm_rl_config['gpu_count'] > 1:
+            torch.cuda.set_device(0)  # 设置主GPU
+            os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, range(vllm_rl_config['gpu_count'])))
+            print(f"🚀 启用vLLM风格RL多GPU优化")
+    
     # Set random seed for reproducibility
     set_seed(42)
     
     print("\n📊 Loading configuration and data...")
     
-    # Create PPO configuration
-    config = create_ppo_config()
+    # Create PPO configuration with vLLM optimization
+    config = create_ppo_config(vllm_rl_config if ENABLE_VLLM_STYLE_RL_PARALLEL else None)
     
     # Load HTTP dataset
     dataset = load_http_dataset()

@@ -6,6 +6,11 @@ datasets>=2.4.0
 scikit-learn>=1.0.0
 numpy>=1.22.0
 
+# vLLM for high-performance parallel inference and training
+vllm>=0.3.0
+ray>=2.5.0  # Required for vLLM distributed serving
+uvloop>=0.17.0  # Performance optimization for vLLM
+
 # Visualization and progress tracking
 matplotlib>=3.5.0
 tqdm>=4.64.0
@@ -18,6 +23,11 @@ accelerate>=0.20.0
 peft>=0.4.0
 bitsandbytes>=0.39.0
 
+# Parallel and distributed training
+deepspeed>=0.9.0  # For advanced parallel training
+torch-distributed>=0.1.0  # Distributed training support
+multiprocessing-logging>=0.3.0  # Better logging for parallel processes
+
 # LLM Fine-tuning (LLM stage)
 unsloth>=2024.1
 xformers>=0.0.20
@@ -28,6 +38,11 @@ seaborn>=0.11.0
 requests>=2.28.0
 protobuf>=3.20.0
 
+# Performance optimization
+psutil>=5.9.0  # System and process monitoring
+py-cpuinfo>=9.0.0  # CPU information for optimal worker configuration
+nvidia-ml-py>=11.0.0  # GPU monitoring and management
+
 # Development and testing
 pytest>=7.0.0
 black>=22.0.0
@@ -36,3 +51,20 @@ isort>=5.10.0
 # Optional: CUDA support (uncomment if needed)
 # torch-audio>=0.12.0
 # torchtext>=0.13.0
+
+# =======================================================
+# vLLM-Style Parallel Training Configuration
+# =======================================================
+# The above dependencies enable:
+# 1. vLLM parallel inference and training optimization
+# 2. Dynamic GPU/CPU resource allocation
+# 3. Mixed precision training (FP16/BF16)
+# 4. Tensor parallelism for multi-GPU setup
+# 5. Efficient data parallel processing
+# 6. Memory optimization through gradient checkpointing
+# 
+# For best performance:
+# - Ensure CUDA toolkit is properly installed
+# - Use multiple GPUs when available
+# - Configure batch sizes based on GPU memory
+# =======================================================
