@@ -126,3 +126,15 @@ python train_ppo.py
 
 3. **最终测试**：
 所有模型都在 `test.json` 上进行效果评估。
+
+```
+文件列表：
+Monday-WorkingHours.pcap_ISCX.csv - 正常流量
+Tuesday-WorkingHours.pcap_ISCX.csv - 暴力破解攻击
+Wednesday-workingHours.pcap_ISCX.csv - DoS/DDoS攻击
+Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv - Web攻击
+Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv - 渗透攻击
+Friday-WorkingHours-Morning.pcap_ISCX.csv - 僵尸网络攻击
+Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv - 端口扫描
+Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv - DDoS攻击
+```
