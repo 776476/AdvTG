@@ -12,7 +12,7 @@ from transformers import (
     DataCollatorWithPadding
 )
 
-from DL.metrics import transformer_metrics, custom_metrics
+from metrics import transformer_metrics, custom_metrics
 
 # Set default device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
