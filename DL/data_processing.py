@@ -2,7 +2,74 @@ import json
 import torch
 from datasets import Dataset
 from torch.utils.data import DataLoader
-from transformers import AutoTokenizer
+import re
+import os
+from collections import Counter
+
+# Try to import transformers, use fallback if not available
+try:
+    from transformers import AutoTokenizer
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    print("Transformers not available, using simple tokenizer")
+    TRANSFORMERS_AVAILABLE = False
+
+class SimpleTokenizer:
+    """Simple tokenizer when transformers is not available"""
+    def __init__(self):
+        self.vocab = {"[PAD]": 0, "[UNK]": 1, "[CLS]": 2, "[SEP]": 3}
+        self.vocab_size = 30000
+        self.pad_token_id = 0
+        self.unk_token_id = 1
+        self.cls_token_id = 2
+        self.sep_token_id = 3
+        
+    def build_vocab(self, texts):
+        """Build vocabulary from texts"""
+        word_freq = Counter()
+        for text in texts:
+            words = re.findall(r'\w+', text.lower())
+            word_freq.update(words)
+        
+        # Add most frequent words to vocab
+        for word, freq in word_freq.most_common(self.vocab_size - len(self.vocab)):
+            if word not in self.vocab:
+                self.vocab[word] = len(self.vocab)
+        
+        print(f"Built vocabulary with {len(self.vocab)} tokens")
+        
+    def encode(self, text, max_length=512, padding=True, truncation=True):
+        # Simple word-based tokenization
+        words = re.findall(r'\w+', text.lower())
+        token_ids = [self.cls_token_id]
+        
+        for word in words:
+            token_ids.append(self.vocab.get(word, self.unk_token_id))
+            if len(token_ids) >= max_length - 1:
+                break
+                
+        token_ids.append(self.sep_token_id)
+        
+        if padding and len(token_ids) < max_length:
+            token_ids.extend([self.pad_token_id] * (max_length - len(token_ids)))
+        elif truncation and len(token_ids) > max_length:
+            token_ids = token_ids[:max_length]
+            
+        return {
+            "input_ids": token_ids,
+            "attention_mask": [1 if x != self.pad_token_id else 0 for x in token_ids]
+        }
+        
+    def __call__(self, texts, max_length=512, padding=True, truncation=True):
+        if isinstance(texts, str):
+            return self.encode(texts, max_length, padding, truncation)
+        else:
+            results = {"input_ids": [], "attention_mask": []}
+            for text in texts:
+                encoded = self.encode(text, max_length, padding, truncation)
+                results["input_ids"].append(encoded["input_ids"])
+                results["attention_mask"].append(encoded["attention_mask"])
+            return results
 
 def json_to_string(data, indent=0):
     """Convert JSON data to a formatted string."""
@@ -24,9 +91,22 @@ def json_to_string(data, indent=0):
 
 def load_data(file_path):
     """Load JSON data from file."""
-    with open(file_path, "r") as f:
-        json_data = json.load(f)
-    return json_data
+    try:
+        # Try UTF-8 encoding first
+        with open(file_path, "r", encoding='utf-8') as f:
+            json_data = json.load(f)
+        return json_data
+    except UnicodeDecodeError:
+        try:
+            # Try GBK encoding
+            with open(file_path, "r", encoding='gbk') as f:
+                json_data = json.load(f)
+            return json_data
+        except UnicodeDecodeError:
+            # Try latin-1 as last resort
+            with open(file_path, "r", encoding='latin-1') as f:
+                json_data = json.load(f)
+            return json_data
 
 def prepare_dataset(json_data, tokenizer=None, max_length=512):
     """Prepare dataset from JSON data."""
@@ -41,9 +121,19 @@ def prepare_dataset(json_data, tokenizer=None, max_length=512):
     dataset = Dataset.from_dict(formatted_data)
     
     if tokenizer:
+        # Build vocabulary for simple tokenizer
+        if isinstance(tokenizer, SimpleTokenizer):
+            tokenizer.build_vocab(formatted_data["text"])
+        
         # Define tokenize function
         def tokenize_function(examples):
-            return tokenizer(examples['text'], padding="max_length", truncation=True, max_length=max_length)
+            if isinstance(tokenizer, SimpleTokenizer):
+                # Use simple tokenizer
+                results = tokenizer(examples['text'], max_length=max_length, padding=True, truncation=True)
+                return results
+            else:
+                # Use transformers tokenizer
+                return tokenizer(examples['text'], padding="max_length", truncation=True, max_length=max_length)
             
         # Apply tokenize function to dataset
         tokenized_dataset = dataset.map(tokenize_function, batched=True)
@@ -79,5 +169,24 @@ def get_data_loaders(train_dataset, val_dataset, test_dataset=None, batch_size=3
     return train_dataloader, val_dataloader
 
 def load_tokenizer(model_name):
-    """Load tokenizer for a specific model."""
-    return AutoTokenizer.from_pretrained(model_name) 
+    """Load tokenizer for a specific model with offline support."""
+    if not TRANSFORMERS_AVAILABLE:
+        print("Using SimpleTokenizer instead of transformers")
+        return SimpleTokenizer()
+        
+    try:
+        # Try to load from cache first
+        tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
+        print(f"Loaded {model_name} tokenizer from cache")
+        return tokenizer
+    except:
+        try:
+            # Try to download
+            print(f"Downloading {model_name} tokenizer...")
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            print(f"Downloaded {model_name} tokenizer successfully")
+            return tokenizer
+        except Exception as e:
+            print(f"Failed to load {model_name} tokenizer: {e}")
+            print("Falling back to SimpleTokenizer")
+            return SimpleTokenizer() 

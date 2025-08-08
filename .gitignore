@@ -58,6 +58,13 @@ MANIFEST
 checkpoints/
 saved_models/
 model_cache/
+models/
+DL/models/
+
+# Hugging Face cache
+.cache/
+*/.cache/
+huggingface_cache/
 
 # Jupyter Notebook
 .ipynb_checkpoints
