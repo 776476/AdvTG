@@ -1,11 +1,17 @@
 import os
 import torch
 
+# Set Hugging Face mirror BEFORE importing unsloth
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+os.environ["HUGGINGFACE_HUB_ENDPOINT"] = "https://hf-mirror.com"
+os.environ["HF_HUB_ENDPOINT"] = "https://hf-mirror.com"
+os.environ["HUGGINGFACE_HUB_URL"] = "https://hf-mirror.com"
+
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
-# 设置代理环境变量
-os.environ['HTTP_PROXY'] = '127.0.0.1:7890'
-os.environ['HTTPS_PROXY'] = '127.0.0.1:7890'
+# 设置代理环境变量 (如果代理不可用则注释掉)
+# os.environ['HTTP_PROXY'] = '127.0.0.1:7890'
+# os.environ['HTTPS_PROXY'] = '127.0.0.1:7890'
 
 
 major_version, minor_version = torch.cuda.get_device_capability()
