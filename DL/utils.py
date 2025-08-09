@@ -95,11 +95,40 @@ class DLSwanLabCallback:
     def __init__(self, use_swanlab=False, model_name="model"):
         self.use_swanlab = use_swanlab
         self.model_name = model_name
+    
+    def __getattr__(self, name):
+        """动态处理任何缺失的回调方法"""
+        if name.startswith('on_'):
+            # 为任何以 'on_' 开头的方法返回一个空的回调函数
+            def empty_callback(*args, **kwargs):
+                pass
+            return empty_callback
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
         
     def on_init_end(self, args, state, control, **kwargs):
         """初始化结束时的回调 - 新版本transformers需要"""
         if self.use_swanlab:
             print(f"📊 SwanLab callback initialized for {self.model_name}")
+    
+    def on_train_begin(self, args, state, control, **kwargs):
+        """训练开始时的回调"""
+        if self.use_swanlab:
+            print(f"📊 Starting SwanLab tracking for {self.model_name}")
+    
+    def on_train_end(self, args, state, control, **kwargs):
+        """训练结束时的回调"""
+        if self.use_swanlab:
+            print(f"📊 Completed SwanLab tracking for {self.model_name}")
+    
+    def on_epoch_begin(self, args, state, control, **kwargs):
+        """每个epoch开始时的回调"""
+        if self.use_swanlab:
+            print(f"📊 Epoch {state.epoch + 1} started for {self.model_name}")
+    
+    def on_epoch_end(self, args, state, control, **kwargs):
+        """每个epoch结束时的回调"""
+        if self.use_swanlab:
+            print(f"📊 Epoch {state.epoch + 1} completed for {self.model_name}")
         
     def on_log(self, args, state, control, model=None, tokenizer=None, **kwargs):
         """训练过程中的日志回调"""
@@ -116,14 +145,4 @@ class DLSwanLabCallback:
                     swanlab.log({f"{self.model_name}_{key}": value})
                     
         except Exception as e:
-            print(f"⚠️  SwanLab logging failed: {e}")
-    
-    def on_train_begin(self, args, state, control, **kwargs):
-        """训练开始时的回调"""
-        if self.use_swanlab:
-            print(f"📊 Starting SwanLab tracking for {self.model_name}")
-    
-    def on_train_end(self, args, state, control, **kwargs):
-        """训练结束时的回调"""
-        if self.use_swanlab:
-            print(f"📊 Completed SwanLab tracking for {self.model_name}") 
+            print(f"⚠️  SwanLab logging failed: {e}") 
