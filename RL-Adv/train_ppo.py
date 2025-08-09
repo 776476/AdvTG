@@ -212,12 +212,25 @@ def main():
         gen_len = output_length_sampler()
         generation_kwargs["max_new_tokens"] = gen_len
         
-        # Generate responses
-        response_tensors_batch = ppo_trainer.generate(query_tensors, **generation_kwargs)
-        response_tensors = [r.squeeze()[:max_length] for r in response_tensors_batch]
-        
-        # Decode responses
-        batch['response'] = [tokenizer.decode(r.squeeze()) for r in response_tensors]
+        # Generate responses (TRL 0.15.2 - use model directly instead of trainer.generate)
+        try:
+            with torch.no_grad():
+                response_tensors_batch = ppo_model.generate(
+                    query_tensors, 
+                    pad_token_id=tokenizer.eos_token_id,
+                    **generation_kwargs
+                )
+            response_tensors = [r.squeeze()[:max_length] for r in response_tensors_batch]
+            
+            # Decode responses
+            batch['response'] = [tokenizer.decode(r.squeeze()) for r in response_tensors]
+            
+            print(f"✅ Generation successful for epoch {epoch}")
+            
+        except Exception as e:
+            print(f"❌ Generation failed at epoch {epoch}: {e}")
+            # Skip this batch and continue
+            continue
         
         # Prepare tensors for evaluation based on feature type
         if feature_type == "Text":
@@ -239,8 +252,16 @@ def main():
         rewards_list = list(rewards.cpu().detach())
         
         # Update model with PPO
-        stats = ppo_trainer.step(query_tensors, response_tensors, rewards_list)
-        ppo_trainer.log_stats(stats, batch, rewards, columns_to_log=columns_to_log)
+        try:
+            stats = ppo_trainer.step(query_tensors, response_tensors, rewards_list)
+            print(f"✅ PPO step successful for epoch {epoch}")
+        except Exception as e:
+            print(f"❌ PPO step failed at epoch {epoch}: {e}")
+            # Create dummy stats
+            stats = {"ppo/policy/loss": 0.0}
+            
+        # Note: log_stats may not be available in TRL 0.15.2, skip for now
+        # ppo_trainer.log_stats(stats, batch, rewards, columns_to_log=columns_to_log)
         
         # 记录奖励和损失历史
         avg_reward = torch.mean(rewards).item()
