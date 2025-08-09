@@ -14,52 +14,66 @@ os.environ["NCCL_IB_DISABLE"] = "1"
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Model paths
-model_name_or_path = "../models/lamma_outputs"
+model_name_or_path = "../models/lamma_outputs"  # 第二阶段微调后的LLM
 
-# Features dictionary
-features_dict = {"Image": "../models/image_model_configs.pkl", "Text": "../models/model_configs.pkl"}
+# 检查模型路径是否存在
+if not os.path.exists(model_name_or_path):
+    raise FileNotFoundError(f"Fine-tuned LLM not found at {model_name_or_path}. Please run stage 2 first.")
 
-# PPO Configuration with vLLM-style optimization support
-def create_ppo_config(vllm_rl_config=None):
-    """创建PPO配置，支持vLLM风格优化"""
-    if vllm_rl_config is None:
-        # 默认配置
-        batch_size = 4
-        mini_batch_size = 1
-        gradient_accumulation_steps = 4
+# Features dictionary - 第一阶段训练的检测模型配置
+features_dict = {
+    "Image": "../models/image_model_configs.pkl", 
+    "Text": "../models/model_configs.pkl"
+}
+
+# 检查检测模型配置文件是否存在
+for feature_type, config_path in features_dict.items():
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Detection model configs not found at {config_path}. Please run stage 1 first.")
+
+# PPO Configuration
+def create_ppo_config(rl_gpu_config=None):
+    """
+    创建PPO配置，支持多GPU优化
+    
+    Args:
+        rl_gpu_config: RL阶段的GPU配置字典，如果为None则使用默认配置
+    
+    Returns:
+        PPOConfig对象
+    """
+    # 默认配置
+    default_batch_size = 4
+    default_gradient_accumulation = 4
+    
+    # 如果提供了GPU配置，使用其中的参数
+    if rl_gpu_config:
+        # 尝试从多种可能的键名中获取batch size
+        batch_size = rl_gpu_config.get('per_device_batch_size', 
+                     rl_gpu_config.get('optimal_batch_size', 
+                     rl_gpu_config.get('batch_size', default_batch_size)))
+        
+        # 尝试从多种可能的键名中获取梯度累积步数
+        gradient_accumulation = rl_gpu_config.get('gradient_accumulation_steps',
+                               rl_gpu_config.get('optimal_gradient_accumulation',
+                               default_gradient_accumulation))
     else:
-        # 使用vLLM优化配置
-        batch_size = vllm_rl_config['optimal_batch_size']
-        mini_batch_size = max(1, batch_size // 4)  # 确保mini_batch_size合理
-        gradient_accumulation_steps = vllm_rl_config['optimal_gradient_accumulation']
+        batch_size = default_batch_size
+        gradient_accumulation = default_gradient_accumulation
     
     return PPOConfig(
-        is_peft_model=True,
-        model_name=model_name_or_path,
         learning_rate=1.41e-5,
         batch_size=batch_size,
-        mini_batch_size=mini_batch_size,
-        gradient_accumulation_steps=gradient_accumulation_steps,
+        mini_batch_size=1,
+        gradient_accumulation_steps=gradient_accumulation,
         use_score_scaling=True,  # scaling
         use_score_norm=True,  # normalization
-        score_clip=1,
-        log_with=None  # Disable wandb, use manual logging with SwanLab
+        score_clip=1.0,
+        # 移除了不支持的参数 is_peft_model
+        # log_with="wandb"  # 也可能不支持，先注释掉
     )
 
-# Generation configurations with vLLM-style optimization support
-def get_generation_config(vllm_rl_config=None):
-    """获取生成配置，支持vLLM风格优化"""
-    batch_size = vllm_rl_config['optimal_batch_size'] if vllm_rl_config else 4
-    
-    sent_kwargs = {
-        "return_all_scores": True,
-        "function_to_apply": "none",
-        "batch_size": batch_size  # 使用优化的batch size
-    }
-    
-    return sent_kwargs
-
-# Default generation configurations (for backward compatibility)
+# Generation configurations
 sent_kwargs = {
     "return_all_scores": True,
     "function_to_apply": "none",
