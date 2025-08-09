@@ -138,18 +138,40 @@ def main():
     
     reward_model = DetectionRewardModel(model_configs, device)
     
-    # Initialize PPO trainer (TRL 0.15.2 version with correct parameter order)
-    # In TRL 0.15.2, value_model is required. We can use the same model as policy model
-    # since AutoModelForCausalLMWithValueHead already has both policy and value heads
-    ppo_trainer = PPOTrainer(
-        args=config,                    # PPOConfig
-        processing_class=tokenizer,     # tokenizer  
-        model=ppo_model,               # policy model
-        ref_model=ref_model,           # reference model
-        reward_model=reward_model,     # Detection model as reward model
-        train_dataset=dataset,         # dataset
-        value_model=ppo_model          # Use same model as policy model (it has value head)
-    )
+    # Initialize PPO trainer (TRL 0.15.2 version - try without value_model first)
+    # Some versions of TRL may have issues with AutoModelForCausalLMWithValueHead as value_model
+    try:
+        ppo_trainer = PPOTrainer(
+            args=config,                    # PPOConfig
+            processing_class=tokenizer,     # tokenizer  
+            model=ppo_model,               # policy model
+            ref_model=ref_model,           # reference model
+            reward_model=reward_model,     # Detection model as reward model
+            train_dataset=dataset          # dataset
+            # value_model is optional in some cases
+        )
+    except Exception as e:
+        print(f"PPOTrainer initialization failed: {e}")
+        print("Trying alternative initialization...")
+        # Try with a simple wrapper for value model
+        class ValueModelWrapper:
+            def __init__(self, model):
+                self.base_model_prefix = getattr(model.pretrained_model, 'base_model_prefix', 'model')
+                self.pretrained_model = model.pretrained_model
+                
+            def __getattr__(self, name):
+                return getattr(self.pretrained_model, name)
+        
+        wrapped_value_model = ValueModelWrapper(ppo_model)
+        ppo_trainer = PPOTrainer(
+            args=config,
+            processing_class=tokenizer,
+            model=ppo_model,
+            ref_model=ref_model,
+            reward_model=reward_model,
+            train_dataset=dataset,
+            value_model=wrapped_value_model
+        )
     
     output_length_sampler = LengthSampler(output_min_length, output_max_length)
     
