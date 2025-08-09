@@ -63,6 +63,7 @@ def setup_models(model_name, device, load_in_4bit=True):
         tuple: (ppo_model, ref_model, tokenizer)
     """
     from config import base_model_name
+    from transformers import GenerationConfig
     
     # Load PPO model with LoRA adapter (don't pass quantization_config as it's already configured)
     ppo_model = AutoModelForCausalLMWithValueHead.from_pretrained(
@@ -70,6 +71,10 @@ def setup_models(model_name, device, load_in_4bit=True):
         torch_dtype=torch.float16,
         trust_remote_code=True
     )
+    
+    # Ensure the model has generation_config
+    if not hasattr(ppo_model, 'generation_config') or ppo_model.generation_config is None:
+        ppo_model.generation_config = GenerationConfig.from_pretrained(model_name)
     
     # Load reference model from base model (with quantization config for base model)
     quantization_config = BitsAndBytesConfig(load_in_4bit=load_in_4bit)
@@ -79,6 +84,10 @@ def setup_models(model_name, device, load_in_4bit=True):
         quantization_config=quantization_config,
         trust_remote_code=True
     )
+    
+    # Ensure the ref model also has generation_config
+    if not hasattr(ref_model, 'generation_config') or ref_model.generation_config is None:
+        ref_model.generation_config = GenerationConfig.from_pretrained(base_model_name)
     
     # Load tokenizer from the LoRA checkpoint (which should have the tokenizer)
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
