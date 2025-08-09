@@ -139,6 +139,8 @@ def main():
     reward_model = DetectionRewardModel(model_configs, device)
     
     # Initialize PPO trainer (TRL 0.15.2 version with correct parameter order)
+    # In TRL 0.15.2, value_model is required. We can use the same model as policy model
+    # since AutoModelForCausalLMWithValueHead already has both policy and value heads
     ppo_trainer = PPOTrainer(
         args=config,                    # PPOConfig
         processing_class=tokenizer,     # tokenizer  
@@ -146,7 +148,7 @@ def main():
         ref_model=ref_model,           # reference model
         reward_model=reward_model,     # Detection model as reward model
         train_dataset=dataset,         # dataset
-        value_model=None               # Value model (can be None if value head is in ppo_model)
+        value_model=ppo_model          # Use same model as policy model (it has value head)
     )
     
     output_length_sampler = LengthSampler(output_min_length, output_max_length)
