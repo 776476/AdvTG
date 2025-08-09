@@ -132,7 +132,7 @@ def main():
     ppo_trainer = PPOTrainer(config, ppo_model, ref_model, tokenizer, dataset=dataset)
     
     # Set save path
-    save_path = os.path.join("../model/ppo_model/", feature_type)
+    save_path = os.path.join("../models/ppo_model/", feature_type)
     mkdir(save_path)
     
     # Load test tokenizer for text feature evaluation

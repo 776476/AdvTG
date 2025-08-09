@@ -74,29 +74,24 @@ class DLSwanLabCallback(TrainerCallback):
         if self.use_swanlab and logs:
             try:
                 import swanlab
-                # 记录损失和学习率 - 使用命名空间分组
+                # 简化日志键名，避免复杂的嵌套命名
                 log_dict = {}
                 if 'loss' in logs:
-                    log_dict[f'TransformerModels/{self.model_name}/train_loss'] = logs['loss']
-                    log_dict[f'ModelComparison/TransformerModels/{self.model_name}_train_loss'] = logs['loss']
+                    log_dict[f'{self.model_name}_train_loss'] = logs['loss']
                 if 'learning_rate' in logs:
-                    log_dict[f'TransformerModels/{self.model_name}/learning_rate'] = logs['learning_rate']
+                    log_dict[f'{self.model_name}_learning_rate'] = logs['learning_rate']
                 if 'epoch' in logs:
                     log_dict['epoch'] = logs['epoch']  # 全局epoch
-                    log_dict[f'TransformerModels/{self.model_name}/epoch'] = logs['epoch']
                 if 'eval_loss' in logs:
-                    log_dict[f'TransformerModels/{self.model_name}/eval_loss'] = logs['eval_loss']
-                    log_dict[f'ModelComparison/TransformerModels/{self.model_name}_eval_loss'] = logs['eval_loss']
+                    log_dict[f'{self.model_name}_eval_loss'] = logs['eval_loss']
                 if 'eval_accuracy' in logs:
-                    log_dict[f'TransformerModels/{self.model_name}/accuracy'] = logs['eval_accuracy']
-                    log_dict[f'ModelComparison/TransformerModels/{self.model_name}_accuracy'] = logs['eval_accuracy']
+                    log_dict[f'{self.model_name}_accuracy'] = logs['eval_accuracy']
                 if 'eval_precision' in logs:
-                    log_dict[f'TransformerModels/{self.model_name}/precision'] = logs['eval_precision']
+                    log_dict[f'{self.model_name}_precision'] = logs['eval_precision']
                 if 'eval_recall' in logs:
-                    log_dict[f'TransformerModels/{self.model_name}/recall'] = logs['eval_recall']
+                    log_dict[f'{self.model_name}_recall'] = logs['eval_recall']
                 if 'eval_f1' in logs:
-                    log_dict[f'TransformerModels/{self.model_name}/f1'] = logs['eval_f1']
-                    log_dict[f'ModelComparison/TransformerModels/{self.model_name}_f1'] = logs['eval_f1']
+                    log_dict[f'{self.model_name}_f1'] = logs['eval_f1']
                 
                 # 添加step信息
                 log_dict['step'] = state.global_step
@@ -116,9 +111,8 @@ class DLSwanLabCallback(TrainerCallback):
                 eval_dict = {}
                 for k, v in logs.items():
                     if k.startswith('eval_'):
-                        # 分组存储评估指标
-                        eval_dict[f'TransformerModels/{self.model_name}/{k}'] = v
-                        eval_dict[f'ModelComparison/TransformerModels/{self.model_name}_{k}'] = v
+                        # 简化评估指标命名
+                        eval_dict[f'{self.model_name}_{k}'] = v
                 
                 if eval_dict:
                     swanlab.log(eval_dict)
@@ -226,31 +220,25 @@ def main():
         import swanlab
         import time
         # 创建包含时间戳的自定义实验名称
-        experiment_name = f"AdvTG-DL-vLLM-{time.strftime('%Y%m%d-%H%M%S')}"
+        experiment_name = f"AdvTG-DL-{time.strftime('%Y%m%d-%H%M%S')}"
         run = swanlab.init(
             project="AdvTG-DL-Training",
-            name=experiment_name,  # 自定义实验名称
-            description="Deep Learning stage - BERT and Custom Models Training with multi-GPU optimization",
+            name=experiment_name,
+            description="Deep Learning stage - BERT and Custom Models Training",
             config={
-                # 移除字符串类型字段，SwanLab config中只保留数值类型
+                # 简化配置，只保留基本参数
                 "batch_size": dl_gpu_config['per_device_batch_size'],
                 "learning_rate": 2e-5,
                 "num_train_epochs": 3,
                 "warmup_steps": 500,
                 "gpu_count": dl_gpu_config['gpu_count'],
-                "effective_batch_size": dl_gpu_config['effective_batch_size'],
-                "mixed_precision": 1 if dl_gpu_config['enable_mixed_precision'] else 0,  # 转换为数值
-                "parallel_workers": dl_gpu_config['dataloader_num_workers'],
-                "gradient_accumulation": dl_gpu_config['gradient_accumulation_steps'],
-                "stage": "DL"  # 用字符串标识训练阶段
+                "effective_batch_size": dl_gpu_config['effective_batch_size']
             }
         )
         
         print("✅ SwanLab initialized successfully!")
         print(f"📊 Project: AdvTG-DL-Training")
-        print(f"📊 学习率为: {run.config.learning_rate}")
-        print(f"📊 批次大小为: {run.config.batch_size}")
-        print(f"📊 训练轮数为: {run.config.num_epochs}")
+        print(f"📊 Experiment: {experiment_name}")
         use_swanlab = True
     except ImportError:
         print("⚠️  SwanLab not installed, continuing without experiment tracking")
@@ -386,11 +374,9 @@ def main():
                 try:
                     swanlab.log({
                         'BERT_final_accuracy': bert_config.get('eval_accuracy', 0),
-                        'BERT_final_precision': bert_config.get('eval_precision', 0),
-                        'BERT_final_recall': bert_config.get('eval_recall', 0),
                         'BERT_final_f1': bert_config.get('eval_f1', 0),
                         'BERT_final_loss': bert_config.get('eval_loss', 0),
-                        'transformer_model_completed': 1  # 用数值表示完成状态
+                        'BERT_completed': 1
                     })
                     print(f"📊 BERT final results logged to SwanLab")
                 except Exception as e:
@@ -472,11 +458,8 @@ def main():
                 try:
                     swanlab.log({
                         f'{model_name}_final_accuracy': model_config.get('accuracy', 0),
-                        f'{model_name}_final_precision': model_config.get('precision', 0),
-                        f'{model_name}_final_recall': model_config.get('recall', 0),
                         f'{model_name}_final_f1': model_config.get('f1', 0),
-                        # 移除字符串类型字段，SwanLab期望数值类型
-                        'custom_model_completed': 1  # 用数值表示完成状态
+                        f'{model_name}_completed': 1
                     })
                     print(f"📊 {model_name} final results logged to SwanLab")
                 except Exception as e:
@@ -504,29 +487,24 @@ def main():
     # Log results to SwanLab if available
     if use_swanlab:
         try:
-            # Log model performance metrics
-            for i, config in enumerate(all_model_configs):
-                model_name = config.get('model_name', f'model_{i}')
-                if 'accuracy' in config:
-                    swanlab.log({f"{model_name}/accuracy": config['accuracy']})
-                if 'f1' in config:
-                    swanlab.log({f"{model_name}/f1_score": config['f1']})
-                if 'precision' in config:
-                    swanlab.log({f"{model_name}/precision": config['precision']})
-                if 'recall' in config:
-                    swanlab.log({f"{model_name}/recall": config['recall']})
-            
-            # Log summary metrics
-            swanlab.log({
+            # 简化模型性能指标日志
+            summary_metrics = {
                 "total_models_trained": len(all_model_configs),
                 "training_completed": 1,
-                "multi_gpu_optimization_enabled": 1 if dl_gpu_config['gpu_count'] > 1 else 0,  # 转换为数值
-                "final_gpu_count": dl_gpu_config['gpu_count'],
+                "gpu_count": dl_gpu_config['gpu_count'],
                 "final_batch_size": BATCH_SIZE,
-                "final_workers": dl_gpu_config['dataloader_num_workers'],
                 "final_effective_batch_size": dl_gpu_config['effective_batch_size']
-            })
+            }
             
+            # 记录每个模型的最终指标
+            for config in all_model_configs:
+                model_name = config.get('model_name', 'unknown')
+                if 'accuracy' in config:
+                    summary_metrics[f"{model_name}_final_accuracy"] = config['accuracy']
+                if 'f1' in config:
+                    summary_metrics[f"{model_name}_final_f1"] = config['f1']
+            
+            swanlab.log(summary_metrics)
             swanlab.finish()
             print("📊 Results logged to SwanLab successfully!")
         except Exception as e:
