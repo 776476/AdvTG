@@ -176,7 +176,7 @@ def main():
     output_length_sampler = LengthSampler(output_min_length, output_max_length)
     
     # Set save path
-    save_path = os.path.join("../model/ppo_model/", feature_type)
+    save_path = os.path.join("../models/ppo_model/", feature_type)
     mkdir(save_path)
     
         # Load test tokenizer for text feature evaluation
@@ -190,8 +190,8 @@ def main():
         except:
             try:
                 # Try alternative path
-                test_tokenizer = AutoTokenizer.from_pretrained("../models/bert/")
-                print("✅ Loaded BERT tokenizer from: ../models/bert/")
+                test_tokenizer = AutoTokenizer.from_pretrained("../models/bert_model/")
+                print("✅ Loaded BERT tokenizer from: ../models/bert_model/")
             except:
                 # If local paths fail, use standard BERT model
                 print("⚠️  Local BERT model not found, using bert-base-uncased from HuggingFace")
