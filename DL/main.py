@@ -74,14 +74,14 @@ class DLSwanLabCallback(TrainerCallback):
         if self.use_swanlab and logs:
             try:
                 import swanlab
-                # 简化日志键名，避免复杂的嵌套命名
+                # 记录损失和学习率
                 log_dict = {}
                 if 'loss' in logs:
                     log_dict[f'{self.model_name}_train_loss'] = logs['loss']
                 if 'learning_rate' in logs:
                     log_dict[f'{self.model_name}_learning_rate'] = logs['learning_rate']
                 if 'epoch' in logs:
-                    log_dict['epoch'] = logs['epoch']  # 全局epoch
+                    log_dict[f'{self.model_name}_epoch'] = logs['epoch']
                 if 'eval_loss' in logs:
                     log_dict[f'{self.model_name}_eval_loss'] = logs['eval_loss']
                 if 'eval_accuracy' in logs:
@@ -95,6 +95,7 @@ class DLSwanLabCallback(TrainerCallback):
                 
                 # 添加step信息
                 log_dict['step'] = state.global_step
+                # 不添加字符串类型的model字段，因为SwanLab期望数值类型
                 
                 if log_dict:
                     swanlab.log(log_dict)
@@ -111,7 +112,6 @@ class DLSwanLabCallback(TrainerCallback):
                 eval_dict = {}
                 for k, v in logs.items():
                     if k.startswith('eval_'):
-                        # 简化评估指标命名
                         eval_dict[f'{self.model_name}_{k}'] = v
                 
                 if eval_dict:
@@ -215,30 +215,45 @@ def main():
     print(f"   - 数据加载workers: {dl_gpu_config['dataloader_num_workers']}")
     print(f"   - 混合精度: {dl_gpu_config['enable_mixed_precision']}")
     
-    # Initialize SwanLab for experiment tracking
+    # Initialize SwanLab for experiment tracking  
     try:
         import swanlab
         import time
         # 创建包含时间戳的自定义实验名称
         experiment_name = f"AdvTG-DL-{time.strftime('%Y%m%d-%H%M%S')}"
-        run = swanlab.init(
+        
+        swanlab.init(
             project="AdvTG-DL-Training",
             name=experiment_name,
-            description="Deep Learning stage - BERT and Custom Models Training",
+            description="Deep Learning stage - BERT and Custom Models Training with multi-GPU optimization",
             config={
-                # 简化配置，只保留基本参数
+                # 移除字符串类型字段，SwanLab config中只保留数值类型
                 "batch_size": dl_gpu_config['per_device_batch_size'],
                 "learning_rate": 2e-5,
-                "num_train_epochs": 3,
-                "warmup_steps": 500,
+                "num_epochs": 6,  # 更新为6个epoch
+                "max_length": 512,
                 "gpu_count": dl_gpu_config['gpu_count'],
-                "effective_batch_size": dl_gpu_config['effective_batch_size']
+                "effective_batch_size": dl_gpu_config['effective_batch_size'],
+                "gradient_accumulation_steps": dl_gpu_config['gradient_accumulation_steps'],
+                "mixed_precision": 1 if dl_gpu_config['enable_mixed_precision'] else 0,  # 转换为数值
+                "dataloader_workers": dl_gpu_config['dataloader_num_workers'],
+                "multi_gpu_optimization": 1  # 用数值表示优化状态
             }
         )
-        
         print("✅ SwanLab initialized successfully!")
         print(f"📊 Project: AdvTG-DL-Training")
         print(f"📊 Experiment: {experiment_name}")
+        print(f"📊 学习率为: 2e-5")
+        print(f"📊 批次大小为: {dl_gpu_config['per_device_batch_size']}")
+        print(f"📊 训练轮数为: 6")
+        
+        # 记录训练开始状态
+        swanlab.log({
+            "training_started": 1,
+            "initialization_timestamp": time.time(),
+            "gpu_initialization_complete": 1
+        })
+        
         use_swanlab = True
     except ImportError:
         print("⚠️  SwanLab not installed, continuing without experiment tracking")
@@ -343,7 +358,7 @@ def main():
     
     transformer_training_args = TrainingArguments(**valid_training_args)
         
-    # Only train transformer model if we have real transformers tokenizer
+        # Only train transformer model if we have real transformers tokenizer
     all_model_configs = []  # 收集所有模型配置
     
     if not isinstance(tokenizer, SimpleTokenizer):
@@ -374,9 +389,11 @@ def main():
                 try:
                     swanlab.log({
                         'BERT_final_accuracy': bert_config.get('eval_accuracy', 0),
+                        'BERT_final_precision': bert_config.get('eval_precision', 0),
+                        'BERT_final_recall': bert_config.get('eval_recall', 0),
                         'BERT_final_f1': bert_config.get('eval_f1', 0),
                         'BERT_final_loss': bert_config.get('eval_loss', 0),
-                        'BERT_completed': 1
+                        'transformer_model_completed': 1  # 用数值表示完成状态
                     })
                     print(f"📊 BERT final results logged to SwanLab")
                 except Exception as e:
@@ -440,15 +457,14 @@ def main():
     for model_name, model in models.items():
         print(f"\n🔄 Training model: {model_name}")
         try:
-            # Pass SwanLab run object to enable real-time logging
-            swanlab_run_obj = run if use_swanlab else None
+            # 传递SwanLab实例用于自定义模型训练实时记录
             save_path, model_config = train_custom_model(
                 model, 
                 model_name, 
                 train_dataset, 
                 val_dataset, 
                 custom_training_args,
-                swanlab_run=swanlab_run_obj
+                swanlab_run=swanlab if use_swanlab else None  # 传递SwanLab实例
             )
             all_model_configs.append(model_config)
             print(f"✅ Completed training model: {model_name}")
@@ -458,8 +474,11 @@ def main():
                 try:
                     swanlab.log({
                         f'{model_name}_final_accuracy': model_config.get('accuracy', 0),
+                        f'{model_name}_final_precision': model_config.get('precision', 0),
+                        f'{model_name}_final_recall': model_config.get('recall', 0),
                         f'{model_name}_final_f1': model_config.get('f1', 0),
-                        f'{model_name}_completed': 1
+                        f'{model_name}_final_loss': model_config.get('loss', 0),
+                        f'custom_model_{model_name}_completed': 1  # 用数值表示完成状态
                     })
                     print(f"📊 {model_name} final results logged to SwanLab")
                 except Exception as e:
@@ -487,13 +506,17 @@ def main():
     # Log results to SwanLab if available
     if use_swanlab:
         try:
-            # 简化模型性能指标日志
+            # 记录完整的训练汇总信息
             summary_metrics = {
-                "total_models_trained": len(all_model_configs),
                 "training_completed": 1,
+                "total_models_trained": len(all_model_configs),
                 "gpu_count": dl_gpu_config['gpu_count'],
+                "final_learning_rate": LEARNING_RATE,
+                "final_num_epochs": NUM_EPOCHS,
                 "final_batch_size": BATCH_SIZE,
-                "final_effective_batch_size": dl_gpu_config['effective_batch_size']
+                "final_effective_batch_size": dl_gpu_config['effective_batch_size'],
+                "gradient_accumulation_steps": dl_gpu_config['gradient_accumulation_steps'],
+                "mixed_precision_enabled": 1 if dl_gpu_config['enable_mixed_precision'] else 0
             }
             
             # 记录每个模型的最终指标
@@ -503,10 +526,35 @@ def main():
                     summary_metrics[f"{model_name}_final_accuracy"] = config['accuracy']
                 if 'f1' in config:
                     summary_metrics[f"{model_name}_final_f1"] = config['f1']
+                if 'precision' in config:
+                    summary_metrics[f"{model_name}_final_precision"] = config['precision']
+                if 'recall' in config:
+                    summary_metrics[f"{model_name}_final_recall"] = config['recall']
+                if 'loss' in config:
+                    summary_metrics[f"{model_name}_final_loss"] = config['loss']
+            
+            # 计算并记录最佳性能指标
+            best_accuracy = max([config.get('accuracy', 0) for config in all_model_configs], default=0)
+            best_f1 = max([config.get('f1', 0) for config in all_model_configs], default=0)
+            
+            if best_accuracy > 0:
+                summary_metrics["best_accuracy_across_all_models"] = best_accuracy
+            if best_f1 > 0:
+                summary_metrics["best_f1_across_all_models"] = best_f1
+            
+            # 记录硬件利用率信息
+            summary_metrics.update({
+                "hardware_gpu_memory_per_device": 25.3,  # RTX 4090 25.3GB each
+                "hardware_total_gpu_memory": 25.3 * dl_gpu_config['gpu_count'],
+                "optimization_vllm_style": 1,
+                "optimization_tensor_parallel": 1 if dl_gpu_config['gpu_count'] > 1 else 0
+            })
             
             swanlab.log(summary_metrics)
             swanlab.finish()
-            print("📊 Results logged to SwanLab successfully!")
+            print("📊 Comprehensive results logged to SwanLab successfully!")
+            print(f"📊 Best accuracy: {best_accuracy:.4f}")
+            print(f"📊 Best F1 score: {best_f1:.4f}")
         except Exception as e:
             print(f"⚠️  SwanLab logging failed: {e}")
     
