@@ -129,8 +129,17 @@ def main():
     
     output_length_sampler = LengthSampler(output_min_length, output_max_length)
     
-    # Initialize PPO trainer
-    ppo_trainer = PPOTrainer(config, ppo_model, ref_model, tokenizer)
+    # Initialize PPO trainer with all required parameters
+    # In newer TRL versions, PPO trainer requires explicit parameters
+    ppo_trainer = PPOTrainer(
+        config, 
+        ppo_model, 
+        ref_model, 
+        tokenizer,
+        reward_model=None,  # We'll use custom reward evaluation
+        train_dataset=dataset,
+        value_model=None  # Value model is part of the ppo_model
+    )
     
     # Set save path
     save_path = os.path.join("../model/ppo_model/", feature_type)
