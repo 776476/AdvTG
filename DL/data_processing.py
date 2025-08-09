@@ -186,8 +186,7 @@ def load_tokenizer(model_name):
             tokenizer = AutoTokenizer.from_pretrained(
                 model_name,
                 trust_remote_code=False,
-                use_auth_token=False
-                # 不设置force_download和cache_dir，使用默认行为
+                token=False  # 替换废弃的 use_auth_token
             )
             print(f"Downloaded {model_name} tokenizer successfully from mirror")
             return tokenizer

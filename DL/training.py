@@ -80,16 +80,14 @@ def train_transformer_model(model_name, model_path, train_dataset, eval_dataset,
         model = AutoModelForSequenceClassification.from_pretrained(
             model_path,
             trust_remote_code=False,
-            use_auth_token=False
-            # 移除强制下载参数，让系统自然选择本地或远程
+            token=False  # 替换废弃的 use_auth_token
         )
         
         print(f"📥 Loading tokenizer from {model_path}...")
         tokenizer = AutoTokenizer.from_pretrained(
             model_path,
             trust_remote_code=False,
-            use_auth_token=False
-            # 移除强制下载参数，让系统自然选择本地或远程
+            token=False  # 替换废弃的 use_auth_token
         )
         
         data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
@@ -109,7 +107,7 @@ def train_transformer_model(model_name, model_path, train_dataset, eval_dataset,
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            tokenizer=tokenizer,
+            processing_class=tokenizer,  # 替换废弃的 tokenizer 参数
             data_collator=data_collator,
             compute_metrics=transformer_metrics,
             callbacks=callbacks

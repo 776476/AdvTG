@@ -96,6 +96,11 @@ class DLSwanLabCallback:
         self.use_swanlab = use_swanlab
         self.model_name = model_name
         
+    def on_init_end(self, args, state, control, **kwargs):
+        """初始化结束时的回调 - 新版本transformers需要"""
+        if self.use_swanlab:
+            print(f"📊 SwanLab callback initialized for {self.model_name}")
+        
     def on_log(self, args, state, control, model=None, tokenizer=None, **kwargs):
         """训练过程中的日志回调"""
         if not self.use_swanlab:
