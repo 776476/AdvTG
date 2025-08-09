@@ -179,19 +179,21 @@ def main():
     save_path = os.path.join("../model/ppo_model/", feature_type)
     mkdir(save_path)
     
-    # Load test tokenizer for text feature evaluation
+        # Load test tokenizer for text feature evaluation
     test_tokenizer = None
     if feature_type == "Text":
         from transformers import AutoTokenizer
         try:
-            # Try to load from local trained model path first (bert_model)
+            # Try to load from the actual saved path (bert_model)
             test_tokenizer = AutoTokenizer.from_pretrained("../models/bert_model/")
+            print("✅ Loaded BERT tokenizer from trained model: ../models/bert_model/")
         except:
             try:
-                # Try alternative path (bert)
+                # Try alternative path
                 test_tokenizer = AutoTokenizer.from_pretrained("../models/bert/")
+                print("✅ Loaded BERT tokenizer from: ../models/bert/")
             except:
-                # If both local paths fail, use standard BERT model
+                # If local paths fail, use standard BERT model
                 print("⚠️  Local BERT model not found, using bert-base-uncased from HuggingFace")
                 test_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
     
