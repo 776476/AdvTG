@@ -145,7 +145,8 @@ def main():
         model=ppo_model,               # policy model
         ref_model=ref_model,           # reference model
         reward_model=reward_model,     # Detection model as reward model
-        train_dataset=dataset          # dataset
+        train_dataset=dataset,         # dataset
+        value_model=None               # Value model (can be None if value head is in ppo_model)
     )
     
     output_length_sampler = LengthSampler(output_min_length, output_max_length)
