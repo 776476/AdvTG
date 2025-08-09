@@ -14,7 +14,9 @@ os.environ["NCCL_IB_DISABLE"] = "1"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Model paths
-model_name_or_path = "../models/lamma_outputs"  # 第二阶段微调后的LLM
+# Model paths
+model_name_or_path = "../models/lamma_outputs/checkpoint-300"  # 第二阶段微调后的LoRA checkpoint
+base_model_name = "unsloth/llama-3-8b-bnb-4bit"  # 基础模型名称
 
 # 检查模型路径是否存在
 if not os.path.exists(model_name_or_path):
