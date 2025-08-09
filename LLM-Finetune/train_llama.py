@@ -6,6 +6,10 @@ import os
 import sys
 import torch
 
+# 禁用wandb - 必须在导入transformers之前设置
+os.environ["WANDB_DISABLED"] = "true"
+os.environ["WANDB_MODE"] = "disabled"
+
 # 导入全局多GPU配置
 sys.path.append('..')
 from multi_gpu_config import AdvTGMultiGPUConfig

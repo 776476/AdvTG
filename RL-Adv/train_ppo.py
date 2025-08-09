@@ -2,6 +2,8 @@ import os
 
 # Set environment variables early to avoid conflicts
 os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Disable tokenizers parallelism to avoid fork warnings
+os.environ["WANDB_DISABLED"] = "true"          # Disable wandb logging
+os.environ["WANDB_MODE"] = "disabled"          # Additional wandb disable setting
 
 # 导入全局多GPU配置
 import sys
@@ -148,8 +150,16 @@ def main():
     
     reward_model = DetectionRewardModel(model_configs, device)
     
-    # Initialize PPO trainer (TRL 0.15.2 version - try without value_model first)
-    # Some versions of TRL may have issues with AutoModelForCausalLMWithValueHead as value_model
+    # Debug: Check the structure of AutoModelForCausalLMWithValueHead
+    print("📋 AutoModelForCausalLMWithValueHead structure:")
+    print(f"   - Model type: {type(ppo_model)}")
+    print(f"   - Has v_head: {hasattr(ppo_model, 'v_head')}")
+    if hasattr(ppo_model, 'pretrained_model'):
+        print(f"   - Pretrained model type: {type(ppo_model.pretrained_model)}")
+    print(f"   - Model attributes: {[attr for attr in dir(ppo_model) if not attr.startswith('_')][:10]}...")
+    
+    # Initialize PPO trainer (TRL 0.15.2 version)
+    # Use ppo_model as both policy and value model since AutoModelForCausalLMWithValueHead has both heads
     try:
         ppo_trainer = PPOTrainer(
             args=config,                    # PPOConfig
@@ -157,20 +167,31 @@ def main():
             model=ppo_model,               # policy model
             ref_model=ref_model,           # reference model
             reward_model=reward_model,     # Detection model as reward model
-            train_dataset=dataset          # dataset
-            # value_model is optional in some cases
+            train_dataset=dataset,         # dataset
+            value_model=ppo_model          # Use same model as value model (has value head)
         )
+        print("✅ PPOTrainer initialized with ppo_model as value_model")
     except Exception as e:
         print(f"PPOTrainer initialization failed: {e}")
         print("Trying alternative initialization...")
-        # Try with a simple wrapper for value model
-        class ValueModelWrapper:
+        # Try with a proper value model wrapper
+        class ValueModelWrapper(torch.nn.Module):
             def __init__(self, model):
-                self.base_model_prefix = getattr(model.pretrained_model, 'base_model_prefix', 'model')
+                super().__init__()
                 self.pretrained_model = model.pretrained_model
+                # Set base_model_prefix attribute that TRL expects
+                self.base_model_prefix = getattr(model.pretrained_model, 'base_model_prefix', 'model')
+                
+            def forward(self, *args, **kwargs):
+                # Value model should return value estimates
+                return self.pretrained_model(*args, **kwargs)
                 
             def __getattr__(self, name):
-                return getattr(self.pretrained_model, name)
+                # Delegate attribute access to the pretrained model
+                try:
+                    return getattr(self.pretrained_model, name)
+                except AttributeError:
+                    raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
         
         wrapped_value_model = ValueModelWrapper(ppo_model)
         ppo_trainer = PPOTrainer(
