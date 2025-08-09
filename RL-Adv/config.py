@@ -4,14 +4,14 @@ from trl import PPOConfig
 
 # Environment variables
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "2"  # 注释掉此行以使用所有GPU
 # os.environ['HTTP_PROXY'] = '127.0.0.1:7890'
 # os.environ['HTTPS_PROXY'] = '127.0.0.1:7890'
 os.environ["NCCL_P2P_DISABLE"] = "1"
 os.environ["NCCL_IB_DISABLE"] = "1"
 
 # Device setup
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Model paths
 model_name_or_path = "../models/lamma_outputs"  # 第二阶段微调后的LLM
@@ -66,10 +66,7 @@ def create_ppo_config(rl_gpu_config=None):
         batch_size=batch_size,
         mini_batch_size=1,
         gradient_accumulation_steps=gradient_accumulation,
-        use_score_scaling=True,  # scaling
-        use_score_norm=True,  # normalization
-        score_clip=1.0,
-        # 移除了不支持的参数 is_peft_model
+        # 移除了不支持的参数: use_score_scaling, use_score_norm, score_clip, is_peft_model
         # log_with="wandb"  # 也可能不支持，先注释掉
     )
 
