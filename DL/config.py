@@ -132,11 +132,14 @@ class DLConfig:
         # Tokenizers配置
         os.environ["TOKENIZERS_PARALLELISM"] = "false"
         
-        # Hugging Face镜像
+        # Hugging Face镜像 - 优先本地，无则从镜像下载
         os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
         os.environ["HUGGINGFACE_HUB_ENDPOINT"] = "https://hf-mirror.com"
         os.environ["HF_HUB_ENDPOINT"] = "https://hf-mirror.com"
         os.environ["HUGGINGFACE_HUB_URL"] = "https://hf-mirror.com"
+        os.environ["TRANSFORMERS_OFFLINE"] = "0"       # 允许在线下载
+        os.environ["HF_HUB_OFFLINE"] = "0"             # 允许在线下载
+        # 移除强制下载和缓存限制，让系统自然选择
         
         print("🚀 启用8张RTX 4090 GPU进行DL训练!")
         
@@ -146,16 +149,36 @@ class DLConfig:
     def _setup_transformers_mirror(self):
         """设置transformers库镜像"""
         try:
+            # 方法1: 设置file_utils
             from transformers import file_utils
             file_utils.HUGGINGFACE_CO_URL_HOME = "https://hf-mirror.com"
-            print("Set transformers to use mirror: https://hf-mirror.com")
+            print("Set transformers file_utils to use mirror: https://hf-mirror.com")
         except:
             try:
+                # 方法2: 设置hub_utils
                 import transformers.utils.hub as hub_utils
                 hub_utils.HUGGINGFACE_CO_URL_HOME = "https://hf-mirror.com"
-                print("Set transformers hub to use mirror")
+                print("Set transformers hub_utils to use mirror")
             except:
-                print("Could not set transformers mirror, using environment variables only")
+                pass
+        
+        try:
+            # 方法3: 直接设置constants
+            import transformers.utils.constants as constants
+            constants.HUGGINGFACE_CO_URL_HOME = "https://hf-mirror.com"
+            print("Set transformers constants to use mirror")
+        except:
+            pass
+        
+        try:
+            # 方法4: 设置全局配置
+            from transformers import AutoConfig
+            AutoConfig._name_or_path = "https://hf-mirror.com"
+            print("Set transformers AutoConfig mirror")
+        except:
+            pass
+            
+        print("✅ Transformers mirror configuration completed")
     
     def setup_gpu_optimization(self):
         """设置GPU优化"""

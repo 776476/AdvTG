@@ -216,13 +216,13 @@ def main():
         from transformers import AutoTokenizer
         try:
             # Try to load from the actual saved checkpoint path
-            test_tokenizer = AutoTokenizer.from_pretrained("../models/bert_model/checkpoint-6370/")
-            print("✅ Loaded BERT tokenizer from trained model: ../models/bert_model/checkpoint-6370/")
+            test_tokenizer = AutoTokenizer.from_pretrained("../models/bert/checkpoint-6370/")
+            print("✅ Loaded BERT tokenizer from trained model: ../models/bert/checkpoint-6370/")
         except:
             try:
                 # Try parent directory
-                test_tokenizer = AutoTokenizer.from_pretrained("../models/bert_model/")
-                print("✅ Loaded BERT tokenizer from: ../models/bert_model/")
+                test_tokenizer = AutoTokenizer.from_pretrained("../models/bert/")
+                print("✅ Loaded BERT tokenizer from: ../models/bert/")
             except:
                 # If local paths fail, use standard BERT model
                 print("⚠️  Local BERT model not found, using bert-base-uncased from HuggingFace")

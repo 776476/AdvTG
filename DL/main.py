@@ -12,6 +12,12 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 os.environ["WANDB_DISABLED"] = "true"
 os.environ["WANDB_MODE"] = "disabled"
 
+# 设置镜像网站 - 优先本地，无则从镜像下载
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+os.environ["HUGGINGFACE_HUB_ENDPOINT"] = "https://hf-mirror.com"
+os.environ["HF_HUB_ENDPOINT"] = "https://hf-mirror.com"
+os.environ["TRANSFORMERS_OFFLINE"] = "0"  # 允许在线下载
+
 # 导入全局多GPU配置
 sys.path.append('..')
 from multi_gpu_config import AdvTGMultiGPUConfig

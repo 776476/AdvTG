@@ -3,6 +3,13 @@ import gc
 import torch
 import torch.nn as nn
 import numpy as np
+
+# 强制设置Hugging Face镜像 - 必须在导入transformers之前
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+os.environ["HUGGINGFACE_HUB_ENDPOINT"] = "https://hf-mirror.com"
+os.environ["HF_HUB_ENDPOINT"] = "https://hf-mirror.com"
+os.environ["TRANSFORMERS_OFFLINE"] = "0"  # 允许在线但使用镜像
+
 from torch.utils.data import DataLoader
 from transformers import (
     AutoModelForSequenceClassification, 
@@ -65,37 +72,98 @@ class EarlyStopping:
 
 def train_transformer_model(model_name, model_path, train_dataset, eval_dataset, training_args, swanlab_callback=None, early_stopping_callback=None):
     """Train a transformer model."""
-    # Load model and tokenizer
-    model = AutoModelForSequenceClassification.from_pretrained(model_path)
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-    data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
-
-    # 准备回调函数列表
-    callbacks = []
-    if swanlab_callback:
-        callbacks.append(swanlab_callback)
-    if early_stopping_callback:
-        callbacks.append(early_stopping_callback)
-
-    # Define trainer
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
-        tokenizer=tokenizer,
-        data_collator=data_collator,
-        compute_metrics=transformer_metrics,
-        callbacks=callbacks  # 添加回调函数
-    )
-
-    # Train model
-    trainer.train()
+    print(f"🔧 Starting {model_name} model training...")
     
-    # Evaluate model to get metrics
-    eval_results = trainer.evaluate()
-    
-    # Save model
+    try:
+        # Load model and tokenizer - 优先本地，无则从镜像下载
+        print(f"📥 Loading model from {model_path}...")
+        model = AutoModelForSequenceClassification.from_pretrained(
+            model_path,
+            trust_remote_code=False,
+            use_auth_token=False
+            # 移除强制下载参数，让系统自然选择本地或远程
+        )
+        
+        print(f"📥 Loading tokenizer from {model_path}...")
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_path,
+            trust_remote_code=False,
+            use_auth_token=False
+            # 移除强制下载参数，让系统自然选择本地或远程
+        )
+        
+        data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
+        print(f"✅ Model and tokenizer loaded successfully")
+
+        # 准备回调函数列表
+        callbacks = []
+        if swanlab_callback:
+            callbacks.append(swanlab_callback)
+        if early_stopping_callback:
+            callbacks.append(early_stopping_callback)
+
+        # Define trainer
+        print(f"🏗️ Initializing Trainer...")
+        trainer = Trainer(
+            model=model,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            tokenizer=tokenizer,
+            data_collator=data_collator,
+            compute_metrics=transformer_metrics,
+            callbacks=callbacks
+        )
+
+        # Train model
+        print(f"🚀 Starting training...")
+        trainer.train()
+        print(f"✅ Training completed successfully")
+        
+        # Evaluate model to get metrics
+        print(f"📊 Evaluating model...")
+        eval_results = trainer.evaluate()
+        
+        # Save model
+        print(f"💾 Saving model...")
+        save_path = f"{MODEL_PATH}/{model_name}"
+        os.makedirs(save_path, exist_ok=True)
+        trainer.save_model(save_path)
+        tokenizer.save_pretrained(save_path)
+        print(f"✅ Model saved to {save_path}")
+        
+        # Create model configuration for RL stage
+        model_config = {
+            "model_name": model_name,
+            "model_path": save_path,
+            "model_type": "transformer",
+            "tokenizer_path": save_path,
+            "num_labels": model.num_labels,
+            "eval_loss": eval_results.get("eval_loss", 0),
+            "eval_accuracy": eval_results.get("eval_accuracy", 0),
+            "eval_f1": eval_results.get("eval_f1", 0),
+            "eval_precision": eval_results.get("eval_precision", 0),
+            "eval_recall": eval_results.get("eval_recall", 0)
+        }
+
+        # Clean up
+        del model
+        del tokenizer
+        del trainer
+        torch.cuda.empty_cache()
+        gc.collect()
+        
+        return save_path, model_config
+        
+    except Exception as e:
+        print(f"❌ {model_name} training failed: {e}")
+        # 如果是网络错误，抛出异常让上层处理
+        if "Network is unreachable" in str(e) or "HTTPSConnectionPool" in str(e) or "MaxRetryError" in str(e):
+            print("🌐 Network connection error detected - skipping transformer model")
+            raise
+        else:
+            print("🔧 Other error occurred during training")
+            raise
     save_path = f"{MODEL_PATH}/{model_name}"
     os.makedirs(save_path, exist_ok=True)
     trainer.save_model(save_path)

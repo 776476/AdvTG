@@ -175,18 +175,23 @@ def load_tokenizer(model_name):
         return SimpleTokenizer()
         
     try:
-        # Try to load from cache first
+        # 优先尝试从本地加载
         tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
-        print(f"Loaded {model_name} tokenizer from cache")
+        print(f"Loaded {model_name} tokenizer from local cache")
         return tokenizer
     except:
         try:
-            # Try to download
-            print(f"Downloading {model_name} tokenizer...")
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            print(f"Downloaded {model_name} tokenizer successfully")
+            # 本地没有则从镜像网站下载
+            print(f"Downloading {model_name} tokenizer from mirror...")
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_name,
+                trust_remote_code=False,
+                use_auth_token=False
+                # 不设置force_download和cache_dir，使用默认行为
+            )
+            print(f"Downloaded {model_name} tokenizer successfully from mirror")
             return tokenizer
         except Exception as e:
-            print(f"Failed to load {model_name} tokenizer: {e}")
+            print(f"Failed to load {model_name} tokenizer from mirror: {e}")
             print("Falling back to SimpleTokenizer")
             return SimpleTokenizer() 
