@@ -4,6 +4,11 @@ import multiprocessing as mp
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 
+# 导入全局多GPU配置
+import sys
+sys.path.append('..')
+from multi_gpu_config import initialize_multi_gpu_for_stage, get_training_arguments_for_stage
+
 # Set Hugging Face mirror BEFORE importing unsloth
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 os.environ["HUGGINGFACE_HUB_ENDPOINT"] = "https://hf-mirror.com"
@@ -18,48 +23,62 @@ os.environ["WANDB_DISABLED"] = "true"
 os.environ["WANDB_MODE"] = "disabled"
 os.environ["WANDB_SILENT"] = "true"
 
-# Initialize SwanLab for LLM fine-tuning tracking
-try:
-    import swanlab
-    import time
-    # 创建包含时间戳的自定义实验名称
-    experiment_name = f"AdvTG-LLM-Llama3-{time.strftime('%Y%m%d-%H%M%S')}"
-    swanlab.init(
-        project="AdvTG-LLM-Finetune",
-        name=experiment_name,  # 自定义实验名称
-        description="LLM Fine-tuning stage - Llama-3-8B with LoRA",
-        config={
-            # 移除字符串类型字段，SwanLab config中只保留数值类型
-            "model_version": 3.8,  # 用数值表示llama-3-8b版本
-            "max_seq_length": 2048,
-            "learning_rate": 2e-4,
-            "lora_r": 16,
-            "lora_alpha": 16,
-            "target_modules_count": 7  # 目标模块数量，用数值代替列表
-        }
-    )
-    print("✅ SwanLab initialized for LLM fine-tuning!")
-    use_swanlab = True
-except ImportError:
-    print("⚠️  SwanLab not installed, continuing without experiment tracking")
-    use_swanlab = False
-except Exception as e:
-    print(f"⚠️  SwanLab initialization failed: {e}")
-    use_swanlab = False
+# 主程序入口
+if __name__ == "__main__":
+    # 初始化LLM阶段的多GPU配置
+    llm_gpu_config = initialize_multi_gpu_for_stage("LLM")
+    
+    # 开始训练流程
+    print("🚀 Starting LLM fine-tuning with multi-GPU support...")
 
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
-# 设置代理环境变量 (如果代理不可用则注释掉)
-# os.environ['HTTP_PROXY'] = '127.0.0.1:7890'
-# os.environ['HTTPS_PROXY'] = '127.0.0.1:7890'
+    # Initialize SwanLab for LLM fine-tuning tracking
+    try:
+        import swanlab
+        import time
+        # 创建包含时间戳的自定义实验名称
+        experiment_name = f"AdvTG-LLM-Llama3-{time.strftime('%Y%m%d-%H%M%S')}"
+        
+        swanlab.init(
+            project="AdvTG-LLM-Finetune",
+            name=experiment_name,  # 自定义实验名称
+            description="LLM Fine-tuning stage - Llama-3-8B with LoRA",
+            config={
+                # 移除字符串类型字段，SwanLab config中只保留数值类型
+                "model_version": 3.8,  # 用数值表示llama-3-8b版本
+                "max_seq_length": 2048,
+                "learning_rate": 2e-4,
+                "lora_r": 16,
+                "lora_alpha": 16,
+                "target_modules_count": 7,  # 目标模块数量，用数值代替列表
+                # 多GPU配置信息
+                "gpu_count": llm_gpu_config['gpu_count'],
+                "per_device_batch_size": llm_gpu_config['per_device_batch_size'],
+                "gradient_accumulation_steps": llm_gpu_config['gradient_accumulation_steps'],
+                "total_effective_batch_size": llm_gpu_config['effective_batch_size'],
+                "multi_gpu_training": 1 if llm_gpu_config['gpu_count'] > 1 else 0
+            }
+        )
+        print("✅ SwanLab initialized for multi-GPU LLM fine-tuning!")
+        print(f"📊 实验名称: {experiment_name}")
+        use_swanlab = True
+    except ImportError:
+        print("⚠️  SwanLab not installed, continuing without experiment tracking")
+        use_swanlab = False
+    except Exception as e:
+        print(f"⚠️  SwanLab initialization failed: {e}")
+        use_swanlab = False
 
+    # CUDA环境基础设置
+    os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
-major_version, minor_version = torch.cuda.get_device_capability()
+    # 设置代理环境变量 (如果代理不可用则注释掉)
+    # os.environ['HTTP_PROXY'] = '127.0.0.1:7890'
+    # os.environ['HTTPS_PROXY'] = '127.0.0.1:7890'
 
+    major_version, minor_version = torch.cuda.get_device_capability()
 
-
-from unsloth import FastLanguageModel
-import torch
+    from unsloth import FastLanguageModel
+    import torch
 max_seq_length = 2048 # Choose any! We auto support RoPE Scaling internally!
 dtype = None # None for auto detection. Float16 for Tesla T4, V100, Bfloat16 for Ampere+
 load_in_4bit = True # Use 4bit quantization to reduce memory usage. Can be False.
@@ -244,47 +263,81 @@ class SwanLabCallback(TrainerCallback):
 # 初始化回调函数
 swanlab_callback = SwanLabCallback(use_swanlab=use_swanlab)
 
-# 设置环境变量以禁用 NCCL 中的 P2P 和 IB
+# 设置环境变量以禁用 NCCL 中的 P2P 和 IB，适配多GPU训练
 os.environ['NCCL_P2P_DISABLE'] = '1'
 os.environ['NCCL_IB_DISABLE'] = '1'
+# 多GPU训练的NCCL设置
+os.environ['NCCL_DEBUG'] = 'INFO'
+os.environ['NCCL_SOCKET_IFNAME'] = 'lo'  # 本地回环接口
+
+# 检查GPU设备并设置主设备
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-model.to(device)
+print(f"🎮 主设备设置为: {device}")
+print(f"🚀 总GPU数量: {torch.cuda.device_count()}")
+
+# 不要手动移动模型到设备，让DataParallel/DistributedDataParallel处理
+# model.to(device)  # 注释掉，让训练器自动处理
+
+# 动态计算最优batch size和gradient accumulation - 8GPU优化
+gpu_count = torch.cuda.device_count()
+optimal_per_device_batch_size = max(4, 8 // max(1, gpu_count // 4))  # 根据GPU数量调整
+optimal_gradient_accumulation = max(8, 64 // gpu_count)  # 保持总batch size稳定
+
+print(f"📊 多GPU训练优化配置:")
+print(f"   - GPU数量: {gpu_count}")
+print(f"   - 每设备batch size: {optimal_per_device_batch_size}")
+print(f"   - 梯度累积步数: {optimal_gradient_accumulation}")
+print(f"   - 总有效batch size: {optimal_per_device_batch_size * optimal_gradient_accumulation * gpu_count}")
+
+    # 构建LLM训练参数
+training_args_base = {
+        "per_device_train_batch_size": llm_gpu_config['per_device_batch_size'],
+        "gradient_accumulation_steps": llm_gpu_config['gradient_accumulation_steps'],
+        "warmup_steps": 5,
+        "max_steps": 500,
+        "learning_rate": 2e-4,
+        "fp16": not is_bfloat16_supported(),
+        "bf16": is_bfloat16_supported(),
+        "logging_steps": 1,
+        "optim": "adamw_8bit",
+        "weight_decay": 0.01,
+        "lr_scheduler_type": "linear",
+        "seed": 3407,
+        "output_dir": "outputs",
+        "report_to": "none",  # 禁用wandb
+    }
+    
+    # 合并全局多GPU配置
+training_args_kwargs = get_training_arguments_for_stage("LLM", training_args_base)
+training_args = TrainingArguments(**training_args_kwargs)
 
 trainer = SFTTrainer(
-    model = model,
-    tokenizer = tokenizer,
-    train_dataset = train_dataset,
-    eval_dataset = val_dataset,  # Use proper validation dataset
-    dataset_text_field = "text",
-    max_seq_length = max_seq_length,
-    dataset_num_proc = 2,
-    packing = False, # Can make training 5x faster for short sequences.
-    callbacks=[swanlab_callback] if use_swanlab else [],  # 添加SwanLab回调
-    args = TrainingArguments(
-        per_device_train_batch_size = 8,
-        gradient_accumulation_steps = 64,
-        warmup_steps = 5,
-        max_steps = 500,
-        learning_rate = 2e-4,
-        fp16 = not is_bfloat16_supported(),
-        bf16 = is_bfloat16_supported(),
-        logging_steps = 1,
-        optim = "adamw_8bit",
-        weight_decay = 0.01,
-        lr_scheduler_type = "linear",
-        seed = 3407,
-        output_dir = "../models/lamma_outputs",
-        save_strategy="steps",
-        save_steps=100,  # 每100步保存一次模型
-        save_total_limit=2,
-        report_to="none",  # 禁用所有自动日志记录
-        eval_strategy="steps",  # 添加评估策略
-        eval_steps=50,  # 每50步评估一次
-        logging_dir="../models/lamma_outputs/logs",  # 设置日志目录
-    ),
-)
+        model = model,
+        tokenizer = tokenizer,
+        train_dataset = train_dataset,
+        eval_dataset = val_dataset,  # Use proper validation dataset
+        dataset_text_field = "text",
+        max_seq_length = max_seq_length,
+        dataset_num_proc = min(8, gpu_count * 2),  # 增加数据处理进程数
+        packing = False, # Can make training 5x faster for short sequences.
+        callbacks=[swanlab_callback] if use_swanlab else [],  # 添加SwanLab回调
+        args = training_args,
+    )
+        
 
+print("Starting training...")
 
+    # 开始训练
+trainer_stats = trainer.train()
+    
+    # 合并全局多GPU配置
+training_args_kwargs = get_training_arguments_for_stage("LLM", training_args_base)
+args = TrainingArguments(**training_args_kwargs)
+    
+    # 开始训练
+trainer_stats = trainer.train()
+
+    # Log training results to SwanLab
 trainer_stats = trainer.train()
 
 # Log training results to SwanLab
@@ -310,4 +363,4 @@ if use_swanlab and 'swanlab' in locals():
     except Exception as e:
         print(f"⚠️  SwanLab logging failed: {e}")
 
-print("✅ LLM fine-tuning completed!")
+    print("✅ LLM fine-tuning completed!")

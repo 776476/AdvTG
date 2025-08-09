@@ -3,6 +3,11 @@ import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import time
 
+# 导入全局多GPU配置
+import sys
+sys.path.append('..')
+from multi_gpu_config import initialize_multi_gpu_for_stage, get_training_arguments_for_stage
+
 # Set Hugging Face mirror BEFORE importing transformers
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 os.environ["HUGGINGFACE_HUB_ENDPOINT"] = "https://hf-mirror.com"
@@ -19,7 +24,7 @@ from models import CNNLSTMClassifier, TextCNNClassifier, DNNClassifier, DeepLog
 from data_processing import load_data, prepare_dataset, load_tokenizer, SimpleTokenizer
 from training import train_transformer_model, train_custom_model
 
-# vLLM风格的DL并行训练配置
+# vLLM风格的DL并行训练配置 - 现在使用全局多GPU配置
 ENABLE_VLLM_STYLE_PARALLEL = True   # 启用vLLM风格并行优化
 ENABLE_TENSOR_PARALLEL = True       # 启用张量并行（多GPU）
 ENABLE_DATA_PARALLEL = True         # 启用数据并行处理
@@ -91,9 +96,15 @@ class DLSwanLabCallback(TrainerCallback):
 def set_environment():
     """Set environment variables for GPU usage."""
     os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    # 启用所有8张GPU用于DL训练
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
     os.environ["NCCL_P2P_DISABLE"] = "1"
     os.environ["NCCL_IB_DISABLE"] = "1"
+    # 多GPU通信优化
+    os.environ["NCCL_DEBUG"] = "INFO"
+    os.environ["NCCL_SOCKET_IFNAME"] = "lo"
+    
+    print("🚀 启用8张RTX 4090 GPU进行DL训练!")
     
     # Force use of mirror for transformers library (additional method)
     try:
@@ -118,17 +129,31 @@ def get_optimal_dl_config():
     
     cpu_count = mp.cpu_count()
     
-    # vLLM风格的动态配置
-    if gpu_count >= 2:
-        tensor_parallel_size = min(4, gpu_count)
-        optimal_batch_size = 32 * gpu_count  # 根据GPU数量扩展
+    # vLLM风格的动态配置 - 优化8GPU配置
+    if gpu_count >= 8:
+        tensor_parallel_size = 8  # 使用所有8张GPU
+        optimal_batch_size = 16 * gpu_count  # 8GPU: 128 batch size
+        worker_multiplier = 4
+    elif gpu_count >= 4:
+        tensor_parallel_size = 4
+        optimal_batch_size = 24 * gpu_count  # 4GPU: 96 batch size  
+        worker_multiplier = 3
+    elif gpu_count >= 2:
+        tensor_parallel_size = 2
+        optimal_batch_size = 32 * gpu_count  # 2GPU: 64 batch size
         worker_multiplier = 2
     else:
         tensor_parallel_size = 1
         optimal_batch_size = 16
         worker_multiplier = 1
     
-    optimal_workers = min(MAX_PARALLEL_WORKERS, cpu_count // 2) * worker_multiplier
+    optimal_workers = min(MAX_PARALLEL_WORKERS * 2, cpu_count // 2) * worker_multiplier  # 增加worker数量
+    
+    print(f"🚀 vLLM风格8GPU优化配置:")
+    print(f"   - 检测GPU数量: {gpu_count}")
+    print(f"   - 张量并行大小: {tensor_parallel_size}")
+    print(f"   - 优化batch size: {optimal_batch_size}")
+    print(f"   - 优化workers: {optimal_workers}")
     
     return {
         "gpu_count": gpu_count,
@@ -137,29 +162,31 @@ def get_optimal_dl_config():
         "optimal_workers": optimal_workers,
         "enable_mixed_precision": gpu_count > 0,  # GPU可用时启用混合精度
         "enable_gradient_checkpointing": True,    # 内存优化
+        "enable_8gpu_optimization": gpu_count >= 8,  # 8GPU特殊优化标记
     }
 
 def main():
-    """主训练函数 - 集成vLLM风格优化和完整训练流程"""
+    """主训练函数 - 使用全局多GPU配置和完整训练流程"""
     # Set environment variables
     set_environment()
+    
+    # 初始化DL阶段的多GPU配置
+    dl_gpu_config = initialize_multi_gpu_for_stage("DL")
     
     # Disable wandb completely and enable swanlab
     os.environ["WANDB_DISABLED"] = "true"
     os.environ["WANDB_MODE"] = "disabled"
     os.environ["WANDB_SILENT"] = "true"
     
-    # 获取vLLM风格的优化配置
-    vllm_config = get_optimal_dl_config()
-    
-    print("🎯 AdvTG-DL vLLM风格并行训练")
+    print("🎯 AdvTG-DL 多GPU训练")
     print("=" * 60)
-    print(f"🔧 vLLM风格配置:")
-    print(f"   - GPU数量: {vllm_config['gpu_count']}")
-    print(f"   - 张量并行大小: {vllm_config['tensor_parallel_size']}")
-    print(f"   - 优化batch size: {vllm_config['optimal_batch_size']}")
-    print(f"   - 优化workers: {vllm_config['optimal_workers']}")
-    print(f"   - 混合精度: {vllm_config['enable_mixed_precision']}")
+    print(f"🔧 DL阶段GPU配置:")
+    print(f"   - GPU数量: {dl_gpu_config['gpu_count']}")
+    print(f"   - 每设备batch size: {dl_gpu_config['per_device_batch_size']}")
+    print(f"   - 梯度累积步数: {dl_gpu_config['gradient_accumulation_steps']}")
+    print(f"   - 总有效batch size: {dl_gpu_config['effective_batch_size']}")
+    print(f"   - 数据加载workers: {dl_gpu_config['dataloader_num_workers']}")
+    print(f"   - 混合精度: {dl_gpu_config['enable_mixed_precision']}")
     
     # Initialize SwanLab for experiment tracking
     try:
@@ -170,20 +197,22 @@ def main():
         run = swanlab.init(
             project="AdvTG-DL-Training",
             name=experiment_name,  # 自定义实验名称
-            description="Deep Learning stage - BERT and Custom Models Training with vLLM optimization",
+            description="Deep Learning stage - BERT and Custom Models Training with multi-GPU optimization",
             config={
                 # 移除字符串类型字段，SwanLab config中只保留数值类型
-                "batch_size": vllm_config['optimal_batch_size'],
+                "batch_size": dl_gpu_config['per_device_batch_size'],
                 "learning_rate": 2e-5,
-                "num_epochs": 6,  # 更新为6个epoch
-                "max_length": 512,
-                "gpu_count": vllm_config['gpu_count'],
-                "tensor_parallel_size": vllm_config['tensor_parallel_size'],
-                "mixed_precision": 1 if vllm_config['enable_mixed_precision'] else 0,  # 转换为数值
-                "parallel_workers": vllm_config['optimal_workers'],
-                "vllm_optimization": 1  # 用数值表示优化状态
+                "num_train_epochs": 3,
+                "warmup_steps": 500,
+                "gpu_count": dl_gpu_config['gpu_count'],
+                "effective_batch_size": dl_gpu_config['effective_batch_size'],
+                "mixed_precision": 1 if dl_gpu_config['enable_mixed_precision'] else 0,  # 转换为数值
+                "parallel_workers": dl_gpu_config['dataloader_num_workers'],
+                "gradient_accumulation": dl_gpu_config['gradient_accumulation_steps'],
+                "stage": "DL"  # 用字符串标识训练阶段
             }
         )
+        
         print("✅ SwanLab initialized successfully!")
         print(f"📊 Project: AdvTG-DL-Training")
         print(f"📊 学习率为: {run.config.learning_rate}")
@@ -203,7 +232,7 @@ def main():
     # Define constants (使用vLLM优化的参数)
     DATA_PATH = "../dataset/dl_train.json"  # Use small dataset for DL training
     MAX_LENGTH = 512
-    BATCH_SIZE = vllm_config['optimal_batch_size']  # 使用vLLM优化的batch size
+    BATCH_SIZE = dl_gpu_config['per_device_batch_size']  # 使用多GPU优化的batch size
     LEARNING_RATE = 2e-5
     NUM_EPOCHS = 6  # 增加到6个epoch，观察收敛情况
     
@@ -215,10 +244,10 @@ def main():
     if torch.cuda.is_available() and ENABLE_VLLM_STYLE_PARALLEL:
         torch.backends.cudnn.benchmark = True
         torch.backends.cuda.matmul.allow_tf32 = True
-        if vllm_config['gpu_count'] > 1:
+        if dl_gpu_config['gpu_count'] > 1:
             torch.cuda.set_device(0)  # 设置主GPU
-            os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, range(vllm_config['gpu_count'])))
-            print(f"🚀 启用vLLM风格多GPU优化")
+            os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, range(dl_gpu_config['gpu_count'])))
+            print(f"🚀 启用多GPU并行优化")
     
     # Load data
     print("📁 Loading data...")
@@ -254,27 +283,25 @@ def main():
     else:
         vocab_size = 30522  # BERT default vocab size
         
-    # Define training arguments for transformer with vLLM-style optimization
-    transformer_training_args = TrainingArguments(
-        output_dir="./models/bert",
-        per_device_train_batch_size=BATCH_SIZE,
-        per_device_eval_batch_size=BATCH_SIZE,
-        learning_rate=LEARNING_RATE,
-        num_train_epochs=NUM_EPOCHS,
-        eval_strategy="epoch",  # Changed from evaluation_strategy
-        save_strategy="epoch",
-        load_best_model_at_end=True,
-        metric_for_best_model="eval_loss",  # 使用验证损失作为最佳模型指标
-        greater_is_better=False,  # 损失越小越好
-        report_to="none",  # Disable all automatic logging including wandb
-        logging_steps=50,  # Log every 50 steps for manual tracking
-        # vLLM风格的优化参数
-        dataloader_num_workers=vllm_config['optimal_workers'] if ENABLE_VLLM_STYLE_PARALLEL else 2,
-        dataloader_pin_memory=True if ENABLE_VLLM_STYLE_PARALLEL else False,
-        fp16=vllm_config['enable_mixed_precision'] if ENABLE_VLLM_STYLE_PARALLEL else False,  # 启用混合精度
-        gradient_checkpointing=True if ENABLE_VLLM_STYLE_PARALLEL else False,  # 内存优化
-        ddp_find_unused_parameters=False if (ENABLE_VLLM_STYLE_PARALLEL and vllm_config['gpu_count'] > 1) else None,
-    )
+    # Define training arguments for transformer with 多GPU优化
+    transformer_training_args_base = {
+        "output_dir": "./models/bert",
+        "per_device_train_batch_size": BATCH_SIZE,
+        "per_device_eval_batch_size": BATCH_SIZE,
+        "learning_rate": LEARNING_RATE,
+        "num_train_epochs": NUM_EPOCHS,
+        "eval_strategy": "epoch",  # Changed from evaluation_strategy
+        "save_strategy": "epoch",
+        "load_best_model_at_end": True,
+        "metric_for_best_model": "eval_loss",  # 使用验证损失作为最佳模型指标
+        "greater_is_better": False,  # 损失越小越好
+        "report_to": "none",  # Disable all automatic logging including wandb
+        "logging_steps": 50,  # Log every 50 steps for manual tracking
+    }
+    
+    # 合并全局多GPU配置
+    transformer_training_args_kwargs = get_training_arguments_for_stage("DL", transformer_training_args_base)
+    transformer_training_args = TrainingArguments(**transformer_training_args_kwargs)
         
     # Only train transformer model if we have real transformers tokenizer
     all_model_configs = []  # 收集所有模型配置
@@ -336,20 +363,20 @@ def main():
         "deeplog": DeepLog(vocab_size, embed_size, num_classes, MAX_LENGTH)
     }
     
-    custom_training_args = TrainingArguments(
-        output_dir="../models/custom_models",
-        per_device_train_batch_size=BATCH_SIZE,
-        per_device_eval_batch_size=BATCH_SIZE,
-        learning_rate=LEARNING_RATE,
-        num_train_epochs=NUM_EPOCHS,
-        report_to="none",  # Disable all automatic logging including wandb
-        logging_steps=50,  # Log every 50 steps for manual tracking
-        # vLLM风格的优化参数
-        dataloader_num_workers=vllm_config['optimal_workers'] if ENABLE_VLLM_STYLE_PARALLEL else 2,
-        dataloader_pin_memory=True if ENABLE_VLLM_STYLE_PARALLEL else False,
-        fp16=vllm_config['enable_mixed_precision'] if ENABLE_VLLM_STYLE_PARALLEL else False,
-        gradient_checkpointing=True if ENABLE_VLLM_STYLE_PARALLEL else False,
-    )
+    # 自定义模型训练参数 - 使用全局多GPU配置
+    custom_training_args_base = {
+        "output_dir": "../models/custom_models",
+        "per_device_train_batch_size": BATCH_SIZE,
+        "per_device_eval_batch_size": BATCH_SIZE,
+        "learning_rate": LEARNING_RATE,
+        "num_train_epochs": NUM_EPOCHS,
+        "report_to": "none",  # Disable all automatic logging including wandb
+        "logging_steps": 50,  # Log every 50 steps for manual tracking
+    }
+    
+    # 合并全局多GPU配置
+    custom_training_args_kwargs = get_training_arguments_for_stage("DL", custom_training_args_base)
+    custom_training_args = TrainingArguments(**custom_training_args_kwargs)
     
     print("\n====== Training Custom Models ======")
     
@@ -422,10 +449,11 @@ def main():
             swanlab.log({
                 "total_models_trained": len(all_model_configs),
                 "training_completed": 1,
-                "vllm_optimization_enabled": 1 if ENABLE_VLLM_STYLE_PARALLEL else 0,  # 转换为数值
-                "final_gpu_count": vllm_config['gpu_count'],
+                "multi_gpu_optimization_enabled": 1 if dl_gpu_config['gpu_count'] > 1 else 0,  # 转换为数值
+                "final_gpu_count": dl_gpu_config['gpu_count'],
                 "final_batch_size": BATCH_SIZE,
-                "final_workers": vllm_config['optimal_workers']
+                "final_workers": dl_gpu_config['dataloader_num_workers'],
+                "final_effective_batch_size": dl_gpu_config['effective_batch_size']
             })
             
             swanlab.finish()
@@ -436,7 +464,7 @@ def main():
     print(f"\n✅ Saved text model configurations to: {config_save_path}")
     print(f"📊 Total text models configured: {len(all_model_configs)}")
     
-    print("\n🎉 All models training completed with vLLM-style optimization!")
+    print("\n🎉 All models training completed with multi-GPU optimization!")
 
 if __name__ == "__main__":
     main()
