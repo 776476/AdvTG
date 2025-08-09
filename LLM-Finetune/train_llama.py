@@ -21,8 +21,12 @@ os.environ["WANDB_SILENT"] = "true"
 # Initialize SwanLab for LLM fine-tuning tracking
 try:
     import swanlab
+    import time
+    # 创建包含时间戳的自定义实验名称
+    experiment_name = f"AdvTG-LLM-Llama3-{time.strftime('%Y%m%d-%H%M%S')}"
     swanlab.init(
         project="AdvTG-LLM-Finetune",
+        name=experiment_name,  # 自定义实验名称
         description="LLM Fine-tuning stage - Llama-3-8B with LoRA",
         config={
             # 移除字符串类型字段，SwanLab config中只保留数值类型

@@ -158,8 +158,12 @@ def main():
     # Initialize SwanLab for experiment tracking
     try:
         import swanlab
+        import time
+        # 创建包含时间戳的自定义实验名称
+        experiment_name = f"AdvTG-DL-vLLM-{time.strftime('%Y%m%d-%H%M%S')}"
         run = swanlab.init(
             project="AdvTG-DL-Training",
+            name=experiment_name,  # 自定义实验名称
             description="Deep Learning stage - BERT and Custom Models Training with vLLM optimization",
             config={
                 # 移除字符串类型字段，SwanLab config中只保留数值类型

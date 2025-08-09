@@ -61,8 +61,12 @@ def main():
     # Initialize SwanLab for RL training tracking
     try:
         import swanlab
+        import time
+        # 创建包含时间戳的自定义实验名称
+        experiment_name = f"AdvTG-RL-PPO-{time.strftime('%Y%m%d-%H%M%S')}"
         swanlab.init(
             project="AdvTG-RL-Training",
+            name=experiment_name,  # 自定义实验名称
             description="RL Adversarial Training stage - PPO with reward feedback",
             config={
                 # 移除字符串类型字段，SwanLab config中只保留数值类型
