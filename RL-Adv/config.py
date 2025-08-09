@@ -60,15 +60,15 @@ def create_ppo_config(rl_gpu_config=None):
         gradient_accumulation = default_gradient_accumulation
     
     return PPOConfig(
-        is_peft_model=True,
+        # is_peft_model=True,  # 新版本不支持此参数
         model_name=model_name_or_path,
         learning_rate=1.41e-5,
         batch_size=batch_size,
         mini_batch_size=1,
         gradient_accumulation_steps=gradient_accumulation,
-        use_score_scaling=True,  # scaling
-        use_score_norm=True,  # normalization
-        score_clip=1.0,
+        # use_score_scaling=True,  # 新版本不支持此参数
+        # use_score_norm=True,     # 新版本不支持此参数 
+        # score_clip=1.0,          # 新版本不支持此参数
         # log_with="wandb"  # 先注释掉，避免依赖问题
     )
 
