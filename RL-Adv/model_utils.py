@@ -145,8 +145,15 @@ def prepare_query_tensors(batch, tokenizer, device, query_max_length=128):
     # Replace traffic types based on requirement labels
     new_query_str = replace_traffic_type(query_str, requirement_label)
     
-    # Convert to tensors
-    query_tensors = [torch.tensor(tokenizer(query)["input_ids"]).to(device) for query in new_query_str]
+    # Convert to tensors and pad to same length
+    query_tensors_list = [torch.tensor(tokenizer(query)["input_ids"]).to(device) for query in new_query_str]
+    
+    # Pad all tensors to the same length and stack into a batch
+    max_len = max(len(t) for t in query_tensors_list)
+    query_tensors = torch.stack([
+        torch.cat([t, torch.zeros(max_len - len(t), dtype=t.dtype, device=device)]) 
+        for t in query_tensors_list
+    ])
     
     return query_tensors, origin_label, requirement_label, new_query_str
 

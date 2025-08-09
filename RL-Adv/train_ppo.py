@@ -201,8 +201,13 @@ def main():
     all_data = []
     reward_history = []  # 记录奖励历史
     loss_history = []    # 记录损失历史
+    max_epochs = 1000    # 设置最大训练轮数避免无限循环
     
     for epoch, batch in tqdm(enumerate(dataloader)):
+        # 添加最大训练轮数限制
+        if epoch >= max_epochs:
+            print(f"🛑 Reached maximum epochs ({max_epochs}), stopping training")
+            break
         # Prepare query tensors
         query_tensors, origin_label, requirement_label, new_query_str = prepare_query_tensors(
             batch, tokenizer, device, query_max_length
@@ -217,18 +222,29 @@ def main():
             with torch.no_grad():
                 response_tensors_batch = ppo_model.generate(
                     query_tensors, 
-                    pad_token_id=tokenizer.eos_token_id,
-                    **generation_kwargs
+                    **generation_kwargs  # generation_kwargs already contains pad_token_id
                 )
-            response_tensors = [r.squeeze()[:max_length] for r in response_tensors_batch]
+            response_tensors_list = [r.squeeze()[:max_length] for r in response_tensors_batch]
+            
+            # Convert response_tensors list to batched tensor for PPO step
+            # Pad to same length and stack
+            max_response_len = max(len(r) for r in response_tensors_list)
+            response_tensors = torch.stack([
+                torch.cat([r, torch.zeros(max_response_len - len(r), dtype=r.dtype, device=r.device)]) 
+                for r in response_tensors_list
+            ])
             
             # Decode responses
-            batch['response'] = [tokenizer.decode(r.squeeze()) for r in response_tensors]
+            batch['response'] = [tokenizer.decode(r, skip_special_tokens=True) for r in response_tensors_list]
             
             print(f"✅ Generation successful for epoch {epoch}")
             
         except Exception as e:
             print(f"❌ Generation failed at epoch {epoch}: {e}")
+            # Clean up any partial tensors
+            if 'response_tensors_batch' in locals():
+                del response_tensors_batch
+            torch.cuda.empty_cache()
             # Skip this batch and continue
             continue
         
@@ -248,8 +264,8 @@ def main():
             batch, feature_type, model_configs, padded_tensor_batch, device, requirement_label
         )
         
-        # Convert rewards to list
-        rewards_list = list(rewards.cpu().detach())
+        # Convert rewards to list (ensure they are on CPU)
+        rewards_list = [float(r) for r in rewards.cpu().detach().numpy()]
         
         # Update model with PPO
         try:
