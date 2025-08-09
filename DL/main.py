@@ -36,28 +36,32 @@ class DLSwanLabCallback(TrainerCallback):
         if self.use_swanlab and logs:
             try:
                 import swanlab
-                # 记录损失和学习率
+                # 记录损失和学习率 - 使用命名空间分组
                 log_dict = {}
                 if 'loss' in logs:
-                    log_dict[f'{self.model_name}_train_loss'] = logs['loss']
+                    log_dict[f'TransformerModels/{self.model_name}/train_loss'] = logs['loss']
+                    log_dict[f'ModelComparison/TransformerModels/{self.model_name}_train_loss'] = logs['loss']
                 if 'learning_rate' in logs:
-                    log_dict[f'{self.model_name}_learning_rate'] = logs['learning_rate']
+                    log_dict[f'TransformerModels/{self.model_name}/learning_rate'] = logs['learning_rate']
                 if 'epoch' in logs:
-                    log_dict[f'{self.model_name}_epoch'] = logs['epoch']
+                    log_dict['epoch'] = logs['epoch']  # 全局epoch
+                    log_dict[f'TransformerModels/{self.model_name}/epoch'] = logs['epoch']
                 if 'eval_loss' in logs:
-                    log_dict[f'{self.model_name}_eval_loss'] = logs['eval_loss']
+                    log_dict[f'TransformerModels/{self.model_name}/eval_loss'] = logs['eval_loss']
+                    log_dict[f'ModelComparison/TransformerModels/{self.model_name}_eval_loss'] = logs['eval_loss']
                 if 'eval_accuracy' in logs:
-                    log_dict[f'{self.model_name}_accuracy'] = logs['eval_accuracy']
+                    log_dict[f'TransformerModels/{self.model_name}/accuracy'] = logs['eval_accuracy']
+                    log_dict[f'ModelComparison/TransformerModels/{self.model_name}_accuracy'] = logs['eval_accuracy']
                 if 'eval_precision' in logs:
-                    log_dict[f'{self.model_name}_precision'] = logs['eval_precision']
+                    log_dict[f'TransformerModels/{self.model_name}/precision'] = logs['eval_precision']
                 if 'eval_recall' in logs:
-                    log_dict[f'{self.model_name}_recall'] = logs['eval_recall']
+                    log_dict[f'TransformerModels/{self.model_name}/recall'] = logs['eval_recall']
                 if 'eval_f1' in logs:
-                    log_dict[f'{self.model_name}_f1'] = logs['eval_f1']
+                    log_dict[f'TransformerModels/{self.model_name}/f1'] = logs['eval_f1']
+                    log_dict[f'ModelComparison/TransformerModels/{self.model_name}_f1'] = logs['eval_f1']
                 
                 # 添加step信息
                 log_dict['step'] = state.global_step
-                # 不添加字符串类型的model字段，因为SwanLab期望数值类型
                 
                 if log_dict:
                     swanlab.log(log_dict)
@@ -74,7 +78,9 @@ class DLSwanLabCallback(TrainerCallback):
                 eval_dict = {}
                 for k, v in logs.items():
                     if k.startswith('eval_'):
-                        eval_dict[f'{self.model_name}_{k}'] = v
+                        # 分组存储评估指标
+                        eval_dict[f'TransformerModels/{self.model_name}/{k}'] = v
+                        eval_dict[f'ModelComparison/TransformerModels/{self.model_name}_{k}'] = v
                 
                 if eval_dict:
                     swanlab.log(eval_dict)

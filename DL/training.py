@@ -216,15 +216,22 @@ def train_custom_model(model, model_name, train_dataset, eval_dataset, training_
         if swanlab_run:
             try:
                 log_dict = {
-                    f'{model_name}_epoch': epoch + 1,
-                    f'{model_name}_train_loss': avg_train_loss,
-                    f'{model_name}_eval_loss': avg_eval_loss,
-                    f'{model_name}_accuracy': accuracy,
-                    f'{model_name}_precision': precision,
-                    f'{model_name}_recall': recall,
-                    f'{model_name}_f1': f1,
-                    f'{model_name}_early_stop_counter': early_stopping.counter,
-                    f'{model_name}_best_eval_loss': early_stopping.best_score
+                    # 使用命名空间分组 - 每个模型有自己的分组
+                    f'CustomModels/{model_name}/train_loss': avg_train_loss,
+                    f'CustomModels/{model_name}/eval_loss': avg_eval_loss,
+                    f'CustomModels/{model_name}/accuracy': accuracy,
+                    f'CustomModels/{model_name}/precision': precision,
+                    f'CustomModels/{model_name}/recall': recall,
+                    f'CustomModels/{model_name}/f1': f1,
+                    f'CustomModels/{model_name}/early_stop_counter': early_stopping.counter,
+                    f'CustomModels/{model_name}/best_eval_loss': early_stopping.best_score,
+                    # 全局指标
+                    'step': epoch + 1,
+                    'epoch': epoch + 1,
+                    # 汇总指标 - 所有自定义模型的比较
+                    f'ModelComparison/CustomModels/{model_name}_train_loss': avg_train_loss,
+                    f'ModelComparison/CustomModels/{model_name}_accuracy': accuracy,
+                    f'ModelComparison/CustomModels/{model_name}_f1': f1
                 }
                 swanlab_run.log(log_dict)
                 print(f"📊 Epoch {epoch + 1} metrics logged to SwanLab for {model_name}")
