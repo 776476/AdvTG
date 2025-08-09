@@ -61,7 +61,7 @@ def create_ppo_config(rl_gpu_config=None):
     
     return PPOConfig(
         # is_peft_model=True,  # 新版本不支持此参数
-        model_name=model_name_or_path,
+        # model_name=model_name_or_path,  # 新版本不支持此参数
         learning_rate=1.41e-5,
         batch_size=batch_size,
         mini_batch_size=1,

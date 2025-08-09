@@ -112,8 +112,8 @@ def main():
     
     print("\n🔧 Setting up models...")
     
-    # Setup models (using config.model_name as in original)
-    ppo_model, ref_model, tokenizer = setup_models(config.model_name, device)
+    # Setup models (using model_name_or_path directly since config.model_name is not available)
+    ppo_model, ref_model, tokenizer = setup_models(model_name_or_path, device)
     
     # Update generation_kwargs with tokenizer pad token ID
     generation_kwargs["pad_token_id"] = tokenizer.eos_token_id
