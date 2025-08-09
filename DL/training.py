@@ -20,7 +20,50 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Define default model save path
 MODEL_PATH = "../models/"
 
-def train_transformer_model(model_name, model_path, train_dataset, eval_dataset, training_args, swanlab_callback=None):
+class EarlyStopping:
+    """Early stopping utility to prevent overfitting"""
+    def __init__(self, patience=3, min_delta=0.01, mode='min'):
+        """
+        Args:
+            patience (int): Number of epochs to wait after min_delta improvement
+            min_delta (float): Minimum change to qualify as improvement
+            mode (str): 'min' for loss, 'max' for accuracy/f1
+        """
+        self.patience = patience
+        self.min_delta = min_delta
+        self.mode = mode
+        self.best_score = float('inf') if mode == 'min' else -float('inf')
+        self.counter = 0
+        self.best_epoch = 0
+        
+    def __call__(self, score, epoch):
+        """
+        Check if training should stop
+        Returns: (should_stop, is_improvement)
+        """
+        is_improvement = False
+        
+        if self.mode == 'min':
+            if score < self.best_score - self.min_delta:
+                self.best_score = score
+                self.counter = 0
+                self.best_epoch = epoch
+                is_improvement = True
+            else:
+                self.counter += 1
+        else:  # mode == 'max'
+            if score > self.best_score + self.min_delta:
+                self.best_score = score
+                self.counter = 0
+                self.best_epoch = epoch
+                is_improvement = True
+            else:
+                self.counter += 1
+        
+        should_stop = self.counter >= self.patience
+        return should_stop, is_improvement
+
+def train_transformer_model(model_name, model_path, train_dataset, eval_dataset, training_args, swanlab_callback=None, early_stopping_callback=None):
     """Train a transformer model."""
     # Load model and tokenizer
     model = AutoModelForSequenceClassification.from_pretrained(model_path)
@@ -31,6 +74,8 @@ def train_transformer_model(model_name, model_path, train_dataset, eval_dataset,
     callbacks = []
     if swanlab_callback:
         callbacks.append(swanlab_callback)
+    if early_stopping_callback:
+        callbacks.append(early_stopping_callback)
 
     # Define trainer
     trainer = Trainer(
@@ -79,8 +124,8 @@ def train_transformer_model(model_name, model_path, train_dataset, eval_dataset,
     
     return save_path, model_config
 
-def train_custom_model(model, model_name, train_dataset, eval_dataset, training_args):
-    """Train a custom model."""
+def train_custom_model(model, model_name, train_dataset, eval_dataset, training_args, swanlab_run=None):
+    """Train a custom model with optional SwanLab logging and early stopping."""
     # Create data loaders
     train_dataloader = DataLoader(
         train_dataset, 
@@ -99,9 +144,18 @@ def train_custom_model(model, model_name, train_dataset, eval_dataset, training_
     optimizer = torch.optim.Adam(model.parameters(), lr=training_args.learning_rate)
     loss_fn = nn.CrossEntropyLoss()
 
+    # Initialize early stopping - 监控验证损失，3个epoch没有改善就停止
+    early_stopping = EarlyStopping(patience=3, min_delta=0.01, mode='min')
+    best_model_state = None
+    
+    print(f"🛑 Early stopping enabled for {model_name}: patience=3, min_delta=0.01")
+
     # Training loop
     for epoch in range(training_args.num_train_epochs):
         model.train()
+        epoch_train_loss = 0
+        num_batches = 0
+        
         for batch in train_dataloader:
             inputs = batch['input_ids'].to(device)
             labels = batch['label'].to(device)
@@ -111,12 +165,20 @@ def train_custom_model(model, model_name, train_dataset, eval_dataset, training_
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            
+            epoch_train_loss += loss.item()
+            num_batches += 1
+
+        # Calculate average training loss for this epoch
+        avg_train_loss = epoch_train_loss / num_batches
 
         # Evaluation
         model.eval()
         all_preds = []
         all_labels = []
         eval_loss = 0
+        num_eval_batches = 0
+        
         with torch.no_grad():
             for batch in eval_dataloader:
                 inputs = batch['input_ids'].to(device)
@@ -124,20 +186,62 @@ def train_custom_model(model, model_name, train_dataset, eval_dataset, training_
                 outputs = model(inputs)
                 loss = nn.CrossEntropyLoss()(outputs, labels)
                 eval_loss += loss.item()
+                num_eval_batches += 1
 
                 all_preds.extend(outputs.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
 
+        # Calculate average evaluation loss
+        avg_eval_loss = eval_loss / num_eval_batches if num_eval_batches > 0 else 0
+
         # Compute metrics
         accuracy, precision, recall, f1 = custom_metrics(np.array(all_preds), np.array(all_labels))
-        print(f"Epoch {epoch + 1}, Eval Loss: {eval_loss}, Accuracy: {accuracy}, Precision: {precision}, Recall: {recall}, F1: {f1}")
+        
+        # Early stopping check
+        should_stop, is_improvement = early_stopping(avg_eval_loss, epoch + 1)
+        
+        # Save best model state if improvement
+        if is_improvement:
+            best_model_state = model.state_dict().copy()
+            print(f"🎯 {model_name} Epoch {epoch + 1}: New best model saved (eval_loss: {avg_eval_loss:.4f})")
+        
+        print(f"Epoch {epoch + 1}, Train Loss: {avg_train_loss:.4f}, Eval Loss: {avg_eval_loss:.4f}, Accuracy: {accuracy:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}")
+        
+        if should_stop:
+            print(f"🛑 Early stopping triggered for {model_name} at epoch {epoch + 1}")
+            print(f"   Best epoch: {early_stopping.best_epoch}, Best eval_loss: {early_stopping.best_score:.4f}")
+            break
+
+        # Log to SwanLab if available
+        if swanlab_run:
+            try:
+                log_dict = {
+                    f'{model_name}_epoch': epoch + 1,
+                    f'{model_name}_train_loss': avg_train_loss,
+                    f'{model_name}_eval_loss': avg_eval_loss,
+                    f'{model_name}_accuracy': accuracy,
+                    f'{model_name}_precision': precision,
+                    f'{model_name}_recall': recall,
+                    f'{model_name}_f1': f1,
+                    f'{model_name}_early_stop_counter': early_stopping.counter,
+                    f'{model_name}_best_eval_loss': early_stopping.best_score
+                }
+                swanlab_run.log(log_dict)
+                print(f"📊 Epoch {epoch + 1} metrics logged to SwanLab for {model_name}")
+            except Exception as e:
+                print(f"⚠️  SwanLab logging failed for {model_name} epoch {epoch + 1}: {e}")
+    
+    # Restore best model if early stopping was triggered
+    if best_model_state is not None:
+        model.load_state_dict(best_model_state)
+        print(f"✅ {model_name} restored to best model state (epoch {early_stopping.best_epoch})")
 
     # Save model
     save_path = f"{MODEL_PATH}/custom_models/{model_name}"
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     torch.save(model.state_dict(), save_path + ".bin")
     
-    # Return model configuration for RL stage
+    # Return model configuration for RL stage (using final metrics)
     model_config = {
         "model_name": model_name,
         "model_path": save_path + ".bin",
@@ -149,7 +253,10 @@ def train_custom_model(model, model_name, train_dataset, eval_dataset, training_
         "accuracy": accuracy,
         "precision": precision,
         "recall": recall,
-        "f1": f1
+        "f1": f1,
+        "best_epoch": early_stopping.best_epoch,
+        "best_eval_loss": early_stopping.best_score,
+        "early_stopped": should_stop
     }
 
     # Clean up

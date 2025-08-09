@@ -13,7 +13,7 @@ os.environ["HUGGINGFACE_HUB_URL"] = "https://hf-mirror.com"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import torch
-from transformers import TrainingArguments, TrainerCallback
+from transformers import TrainingArguments, TrainerCallback, EarlyStoppingCallback
 
 from models import CNNLSTMClassifier, TextCNNClassifier, DNNClassifier, DeepLog
 from data_processing import load_data, prepare_dataset, load_tokenizer, SimpleTokenizer
@@ -47,9 +47,13 @@ class DLSwanLabCallback(TrainerCallback):
                 if 'eval_loss' in logs:
                     log_dict[f'{self.model_name}_eval_loss'] = logs['eval_loss']
                 if 'eval_accuracy' in logs:
-                    log_dict[f'{self.model_name}_eval_accuracy'] = logs['eval_accuracy']
+                    log_dict[f'{self.model_name}_accuracy'] = logs['eval_accuracy']
+                if 'eval_precision' in logs:
+                    log_dict[f'{self.model_name}_precision'] = logs['eval_precision']
+                if 'eval_recall' in logs:
+                    log_dict[f'{self.model_name}_recall'] = logs['eval_recall']
                 if 'eval_f1' in logs:
-                    log_dict[f'{self.model_name}_eval_f1'] = logs['eval_f1']
+                    log_dict[f'{self.model_name}_f1'] = logs['eval_f1']
                 
                 # 添加step信息
                 log_dict['step'] = state.global_step
@@ -161,7 +165,7 @@ def main():
                 # 移除字符串类型字段，SwanLab config中只保留数值类型
                 "batch_size": vllm_config['optimal_batch_size'],
                 "learning_rate": 2e-5,
-                "num_epochs": 3,
+                "num_epochs": 6,  # 更新为6个epoch
                 "max_length": 512,
                 "gpu_count": vllm_config['gpu_count'],
                 "tensor_parallel_size": vllm_config['tensor_parallel_size'],
@@ -191,7 +195,7 @@ def main():
     MAX_LENGTH = 512
     BATCH_SIZE = vllm_config['optimal_batch_size']  # 使用vLLM优化的batch size
     LEARNING_RATE = 2e-5
-    NUM_EPOCHS = 3
+    NUM_EPOCHS = 6  # 增加到6个epoch，观察收敛情况
     
     # Set device with vLLM-style optimization
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -250,6 +254,10 @@ def main():
         eval_strategy="epoch",  # Changed from evaluation_strategy
         save_strategy="epoch",
         load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",  # 使用验证损失作为最佳模型指标
+        greater_is_better=False,  # 损失越小越好
+        early_stopping_patience=3,  # 3个epoch没有改善就停止
+        early_stopping_threshold=0.01,  # 最小改善阈值
         report_to="none",  # Disable all automatic logging including wandb
         logging_steps=50,  # Log every 50 steps for manual tracking
         # vLLM风格的优化参数
@@ -265,8 +273,14 @@ def main():
     
     if not isinstance(tokenizer, SimpleTokenizer):
         try:
-            # 创建BERT专用的SwanLab回调
+            # 创建BERT专用的SwanLab回调和早停回调
             bert_callback = DLSwanLabCallback(use_swanlab=use_swanlab, model_name="BERT") if use_swanlab else None
+            early_stopping_callback = EarlyStoppingCallback(
+                early_stopping_patience=3,
+                early_stopping_threshold=0.01
+            )
+            
+            print("🛑 BERT Early stopping enabled: patience=3, threshold=0.01")
             
             bert_save_path, bert_config = train_transformer_model(
                 transformer_model_name,
@@ -274,10 +288,27 @@ def main():
                 train_dataset, 
                 val_dataset, 
                 transformer_training_args,
-                swanlab_callback=bert_callback  # 传递回调函数
+                swanlab_callback=bert_callback,  # 传递回调函数
+                early_stopping_callback=early_stopping_callback  # 传递早停回调
             )
             all_model_configs.append(bert_config)
             print("✅ BERT model training completed!")
+            
+            # 记录BERT模型的最终结果到SwanLab
+            if use_swanlab:
+                try:
+                    swanlab.log({
+                        'BERT_final_accuracy': bert_config.get('eval_accuracy', 0),
+                        'BERT_final_precision': bert_config.get('eval_precision', 0),
+                        'BERT_final_recall': bert_config.get('eval_recall', 0),
+                        'BERT_final_f1': bert_config.get('eval_f1', 0),
+                        'BERT_final_loss': bert_config.get('eval_loss', 0),
+                        'transformer_model_completed': 1  # 用数值表示完成状态
+                    })
+                    print(f"📊 BERT final results logged to SwanLab")
+                except Exception as e:
+                    print(f"⚠️  SwanLab logging failed for BERT: {e}")
+                    
         except Exception as e:
             print(f"❌ BERT training failed: {e}")
             print("Continuing with custom models only...")
@@ -317,17 +348,20 @@ def main():
     for model_name, model in models.items():
         print(f"\n🔄 Training model: {model_name}")
         try:
+            # Pass SwanLab run object to enable real-time logging
+            swanlab_run_obj = run if use_swanlab else None
             save_path, model_config = train_custom_model(
                 model, 
                 model_name, 
                 train_dataset, 
                 val_dataset, 
-                custom_training_args
+                custom_training_args,
+                swanlab_run=swanlab_run_obj
             )
             all_model_configs.append(model_config)
             print(f"✅ Completed training model: {model_name}")
             
-            # 手动记录自定义模型的结果到SwanLab
+            # 记录自定义模型的最终结果到SwanLab
             if use_swanlab:
                 try:
                     swanlab.log({
@@ -338,7 +372,7 @@ def main():
                         # 移除字符串类型字段，SwanLab期望数值类型
                         'custom_model_completed': 1  # 用数值表示完成状态
                     })
-                    print(f"📊 {model_name} results logged to SwanLab")
+                    print(f"📊 {model_name} final results logged to SwanLab")
                 except Exception as e:
                     print(f"⚠️  SwanLab logging failed for {model_name}: {e}")
             
