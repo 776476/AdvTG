@@ -50,7 +50,7 @@ class DLSwanLabCallback(TrainerCallback):
                 
                 # 添加step信息
                 log_dict['step'] = state.global_step
-                log_dict['model'] = self.model_name
+                # 不添加字符串类型的model字段，因为SwanLab期望数值类型
                 
                 if log_dict:
                     swanlab.log(log_dict)
@@ -155,16 +155,16 @@ def main():
             project="AdvTG-DL-Training",
             description="Deep Learning stage - BERT and Custom Models Training with vLLM optimization",
             config={
-                "framework": "AdvTG-DL",
-                "optimization": "vLLM-style", 
+                # 移除字符串类型字段，SwanLab config中只保留数值类型
                 "batch_size": vllm_config['optimal_batch_size'],
                 "learning_rate": 2e-5,
                 "num_epochs": 3,
                 "max_length": 512,
                 "gpu_count": vllm_config['gpu_count'],
                 "tensor_parallel_size": vllm_config['tensor_parallel_size'],
-                "mixed_precision": vllm_config['enable_mixed_precision'],
-                "parallel_workers": vllm_config['optimal_workers']
+                "mixed_precision": 1 if vllm_config['enable_mixed_precision'] else 0,  # 转换为数值
+                "parallel_workers": vllm_config['optimal_workers'],
+                "vllm_optimization": 1  # 用数值表示优化状态
             }
         )
         print("✅ SwanLab initialized successfully!")
@@ -332,8 +332,8 @@ def main():
                         f'{model_name}_final_precision': model_config.get('precision', 0),
                         f'{model_name}_final_recall': model_config.get('recall', 0),
                         f'{model_name}_final_f1': model_config.get('f1', 0),
-                        'model_type': 'custom',
-                        'model_name': model_name
+                        # 移除字符串类型字段，SwanLab期望数值类型
+                        'custom_model_completed': 1  # 用数值表示完成状态
                     })
                     print(f"📊 {model_name} results logged to SwanLab")
                 except Exception as e:
@@ -377,7 +377,7 @@ def main():
             swanlab.log({
                 "total_models_trained": len(all_model_configs),
                 "training_completed": 1,
-                "vllm_optimization_enabled": ENABLE_VLLM_STYLE_PARALLEL,
+                "vllm_optimization_enabled": 1 if ENABLE_VLLM_STYLE_PARALLEL else 0,  # 转换为数值
                 "final_gpu_count": vllm_config['gpu_count'],
                 "final_batch_size": BATCH_SIZE,
                 "final_workers": vllm_config['optimal_workers']
