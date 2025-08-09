@@ -184,12 +184,12 @@ def main():
     if feature_type == "Text":
         from transformers import AutoTokenizer
         try:
-            # Try to load from the actual saved path (bert_model)
-            test_tokenizer = AutoTokenizer.from_pretrained("../models/bert_model/")
-            print("✅ Loaded BERT tokenizer from trained model: ../models/bert_model/")
+            # Try to load from the actual saved checkpoint path
+            test_tokenizer = AutoTokenizer.from_pretrained("../models/bert_model/checkpoint-6370/")
+            print("✅ Loaded BERT tokenizer from trained model: ../models/bert_model/checkpoint-6370/")
         except:
             try:
-                # Try alternative path
+                # Try parent directory
                 test_tokenizer = AutoTokenizer.from_pretrained("../models/bert_model/")
                 print("✅ Loaded BERT tokenizer from: ../models/bert_model/")
             except:
