@@ -118,19 +118,35 @@ def main():
     # Update generation_kwargs with tokenizer pad token ID
     generation_kwargs["pad_token_id"] = tokenizer.eos_token_id
     
-    # Initialize PPO trainer (new TRL version requires explicit parameters in correct order)
-    ppo_trainer = PPOTrainer(
-        config=config, 
-        model=ppo_model, 
-        ref_model=ref_model, 
-        tokenizer=tokenizer,
-        dataset=dataset,
-        reward_model=None,  # We use custom reward evaluation
-        value_model=None    # Value model is integrated in ppo_model
-    )
-    
-    # Configuration parameters (using config from config.py)
+    # Configuration parameters (load detection models first)
     feature_type, model_configs = select_feature_model_type(features_dict)
+    
+    # Load detection model as reward model
+    print(f"🔧 Loading detection model as reward model for feature type: {feature_type}")
+    
+    # Create a simple reward model wrapper using the detection models
+    class DetectionRewardModel(torch.nn.Module):
+        def __init__(self, model_configs, device):
+            super().__init__()
+            self.model_configs = model_configs
+            self.device = device
+            
+        def forward(self, input_ids):
+            # This is just a placeholder - the actual reward computation 
+            # happens in evaluate_responses function
+            return torch.zeros(input_ids.shape[0], 1, device=self.device)
+    
+    reward_model = DetectionRewardModel(model_configs, device)
+    
+    # Initialize PPO trainer (TRL 0.15.2 version with correct parameter order)
+    ppo_trainer = PPOTrainer(
+        args=config,                    # PPOConfig
+        processing_class=tokenizer,     # tokenizer  
+        model=ppo_model,               # policy model
+        ref_model=ref_model,           # reference model
+        reward_model=reward_model,     # Detection model as reward model
+        train_dataset=dataset          # dataset
+    )
     
     output_length_sampler = LengthSampler(output_min_length, output_max_length)
     
