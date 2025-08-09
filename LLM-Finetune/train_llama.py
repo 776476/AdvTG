@@ -9,38 +9,6 @@ import sys
 sys.path.append('..')
 from multi_gpu_config import initialize_multi_gpu_for_stage, get_training_arguments_for_stage
 
-# Set Hugg# 动态计算最优batch size和gradient accumulation - 8GPU优化
-gpu_count = torch.cuda.device_count()
-optimal_per_device_batch_size = max(4, 8 // max(1, gpu_count // 4))  # 根据GPU数量调整
-optimal_gradient_accumulation = max(8, 64 // gpu_count)  # 保持总batch size稳定
-
-print(f"🔧 LLM阶段 8GPU训练配置:")
-print(f"   - GPU数量: {gpu_count}")
-print(f"   - 每设备batch size: {optimal_per_device_batch_size}")
-print(f"   - 梯度累积步数: {optimal_gradient_accumulation}")
-print(f"   - 总有效batch size: {optimal_per_device_batch_size * optimal_gradient_accumulation * gpu_count}")
-
-# 构建LLM训练参数
-training_args_base = {
-    "per_device_train_batch_size": optimal_per_device_batch_size,
-    "gradient_accumulation_steps": optimal_gradient_accumulation,
-    "warmup_steps": 5,
-    "max_steps": 500,
-    "learning_rate": 2e-4,
-    "fp16": True,  # 使用 fp16
-    "bf16": False,
-    "logging_steps": 1,
-    "optim": "adamw_8bit",
-    "weight_decay": 0.01,
-    "lr_scheduler_type": "linear",
-    "seed": 3407,
-    "output_dir": "outputs",
-    # 禁用分布式训练相关参数，让Unsloth处理多GPU
-    "local_rank": -1,
-    "ddp_backend": None,
-    "dataloader_num_workers": 0,  # 避免多进程冲突
-}
-
 # 设置Hugging Face镜像 - 这行需要在导入unsloth之前或者导入之后
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 os.environ["HUGGINGFACE_HUB_ENDPOINT"] = "https://hf-mirror.com"
@@ -321,6 +289,27 @@ print(f"   - 每设备batch size: {optimal_per_device_batch_size}")
 print(f"   - 梯度累积步数: {optimal_gradient_accumulation}")
 print(f"   - 总有效batch size: {optimal_per_device_batch_size * optimal_gradient_accumulation * gpu_count}")
 
+# 构建LLM训练参数
+training_args_base = {
+    "per_device_train_batch_size": optimal_per_device_batch_size,
+    "gradient_accumulation_steps": optimal_gradient_accumulation,
+    "warmup_steps": 5,
+    "max_steps": 500,
+    "learning_rate": 2e-4,
+    "fp16": False,  # 禁用 fp16，因为模型使用 bfloat16
+    "bf16": True,   # 使用 bf16，与模型精度匹配
+    "logging_steps": 1,
+    "optim": "adamw_8bit",
+    "weight_decay": 0.01,
+    "lr_scheduler_type": "linear",
+    "seed": 3407,
+    "output_dir": "outputs",
+    # 禁用分布式训练相关参数，让Unsloth处理多GPU
+    "local_rank": -1,
+    "ddp_backend": None,
+    "dataloader_num_workers": 0,  # 避免多进程冲突
+}
+
 # 初始化全局多GPU配置
 from multi_gpu_config import AdvTGMultiGPUConfig
 global_gpu_config = AdvTGMultiGPUConfig()
@@ -332,15 +321,15 @@ llm_gpu_config = global_gpu_config.get_stage_config("LLM")
 training_args = TrainingArguments(**training_args_base)
 
 trainer = SFTTrainer(
-        model = model,
-        tokenizer = tokenizer,
-        train_dataset = train_dataset,
-        eval_dataset = val_dataset,  # Use proper validation dataset
-        dataset_text_field = "text",
-        max_seq_length = max_seq_length,
-        dataset_num_proc = min(8, gpu_count * 2),  # 增加数据处理进程数
-        packing = False, # Can make training 5x faster for short sequences.
-        callbacks=[swanlab_callback] if use_swanlab else [],  # 添加SwanLab回调
+    model = model,
+    tokenizer = tokenizer,
+    train_dataset = train_dataset,
+    eval_dataset = val_dataset,  # Use proper validation dataset
+    dataset_text_field = "text",
+    max_seq_length = max_seq_length,
+    dataset_num_proc = min(8, gpu_count * 2),  # 增加数据处理进程数
+    packing = False, # Can make training 5x faster for short sequences.
+    callbacks=[swanlab_callback] if use_swanlab else [],  # 添加SwanLab回调
     args = training_args,
 )
 
