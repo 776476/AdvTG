@@ -183,7 +183,17 @@ def main():
     test_tokenizer = None
     if feature_type == "Text":
         from transformers import AutoTokenizer
-        test_tokenizer = AutoTokenizer.from_pretrained("../models/bert/")
+        try:
+            # Try to load from local trained model path first (bert_model)
+            test_tokenizer = AutoTokenizer.from_pretrained("../models/bert_model/")
+        except:
+            try:
+                # Try alternative path (bert)
+                test_tokenizer = AutoTokenizer.from_pretrained("../models/bert/")
+            except:
+                # If both local paths fail, use standard BERT model
+                print("⚠️  Local BERT model not found, using bert-base-uncased from HuggingFace")
+                test_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
     
     # Training loop
     all_data = []
