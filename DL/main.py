@@ -318,7 +318,7 @@ def main():
         
     # Define training arguments for transformer with 多GPU优化
     transformer_training_args_base = {
-        "output_dir": "./models/bert",
+        "output_dir": "../models/bert",
         "per_device_train_batch_size": BATCH_SIZE,
         "per_device_eval_batch_size": BATCH_SIZE,
         "learning_rate": LEARNING_RATE,
