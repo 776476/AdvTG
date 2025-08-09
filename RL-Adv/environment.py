@@ -32,7 +32,7 @@ def set_huggingface_mirror():
 def set_cuda_environment():
     """Set CUDA environment variables for optimal GPU performance."""
     os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    # os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # 注释掉此行以使用所有GPU
     os.environ["NCCL_P2P_DISABLE"] = "1"
     os.environ["NCCL_IB_DISABLE"] = "1"
     

@@ -113,7 +113,7 @@ def main():
     print("\n🔧 Setting up models...")
     
     # Setup models
-    ppo_model, ref_model, tokenizer = setup_models(config.model_name, device)
+    ppo_model, ref_model, tokenizer = setup_models(model_name_or_path, device)
     
     # Import configuration from config.py
     from config import (

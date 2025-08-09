@@ -20,6 +20,11 @@ class AdvTGMultiGPUConfig:
         """初始化全局GPU环境"""
         if self.is_initialized:
             return True
+        
+        # 清除可能的GPU限制环境变量，以便检测所有GPU
+        if 'CUDA_VISIBLE_DEVICES' in os.environ:
+            print(f"🔍 清除现有CUDA_VISIBLE_DEVICES限制: {os.environ['CUDA_VISIBLE_DEVICES']}")
+            del os.environ['CUDA_VISIBLE_DEVICES']
             
         # 检测GPU可用性
         self.gpu_count = torch.cuda.device_count() if torch.cuda.is_available() else 0
