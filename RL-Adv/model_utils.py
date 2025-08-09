@@ -5,7 +5,6 @@ from transformers import AutoTokenizer, BitsAndBytesConfig
 from trl import AutoModelForCausalLMWithValueHead
 from trl.core import LengthSampler
 import torch.nn.functional as F
-from peft import PeftModel
 from utils import get_label, replace_traffic_type, mkdir
 
 def load_model_configs(feature_type, features_dict=None):
@@ -52,44 +51,34 @@ def select_feature_model_type(features_dict):
 
 def setup_models(model_name, device, load_in_4bit=True):
     """
-    Set up PPO model and reference model for LoRA checkpoint.
+    Set up PPO model and reference model.
     
     Args:
-        model_name: Path to the LoRA checkpoint
+        model_name: Name or path of the model
         device: Torch device
         load_in_4bit: Whether to load model in 4-bit quantization
         
     Returns:
         tuple: (ppo_model, ref_model, tokenizer)
     """
-    from config import base_model_name
-    from transformers import GenerationConfig
-    
-    # Load PPO model with LoRA adapter (don't pass quantization_config as it's already configured)
-    ppo_model = AutoModelForCausalLMWithValueHead.from_pretrained(
-        model_name,  # This is the LoRA checkpoint path
-        torch_dtype=torch.float16,
-        trust_remote_code=True
-    )
-    
-    # Ensure the model has generation_config
-    if not hasattr(ppo_model, 'generation_config') or ppo_model.generation_config is None:
-        ppo_model.generation_config = GenerationConfig.from_pretrained(model_name)
-    
-    # Load reference model from base model (with quantization config for base model)
     quantization_config = BitsAndBytesConfig(load_in_4bit=load_in_4bit)
-    ref_model = AutoModelForCausalLMWithValueHead.from_pretrained(
-        base_model_name,  # Use the base model for reference
+    
+    # Load PPO model and reference model (both using the same fine-tuned model)
+    ppo_model = AutoModelForCausalLMWithValueHead.from_pretrained(
+        model_name, 
         torch_dtype=torch.float16,
         quantization_config=quantization_config,
         trust_remote_code=True
     )
     
-    # Ensure the ref model also has generation_config
-    if not hasattr(ref_model, 'generation_config') or ref_model.generation_config is None:
-        ref_model.generation_config = GenerationConfig.from_pretrained(base_model_name)
+    ref_model = AutoModelForCausalLMWithValueHead.from_pretrained(
+        model_name,
+        torch_dtype=torch.float16,
+        quantization_config=quantization_config,
+        trust_remote_code=True
+    )
     
-    # Load tokenizer from the LoRA checkpoint (which should have the tokenizer)
+    # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token

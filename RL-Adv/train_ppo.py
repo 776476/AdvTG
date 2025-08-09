@@ -112,34 +112,19 @@ def main():
     
     print("\n🔧 Setting up models...")
     
-    # Setup models
-    ppo_model, ref_model, tokenizer = setup_models(model_name_or_path, device)
-    
-    # Import configuration from config.py
-    from config import (
-        generation_kwargs, output_min_length, output_max_length, 
-        max_length, query_max_length, columns_to_log, features_dict
-    )
+    # Setup models (using config.model_name as in original)
+    ppo_model, ref_model, tokenizer = setup_models(config.model_name, device)
     
     # Update generation_kwargs with tokenizer pad token ID
     generation_kwargs["pad_token_id"] = tokenizer.eos_token_id
+    
+    # Initialize PPO trainer (original style)
+    ppo_trainer = PPOTrainer(config, ppo_model, ref_model, tokenizer, dataset=dataset)
     
     # Configuration parameters (using config from config.py)
     feature_type, model_configs = select_feature_model_type(features_dict)
     
     output_length_sampler = LengthSampler(output_min_length, output_max_length)
-    
-    # Initialize PPO trainer with all required parameters
-    # In newer TRL versions, PPO trainer requires explicit parameters
-    ppo_trainer = PPOTrainer(
-        config, 
-        ppo_model, 
-        ref_model, 
-        tokenizer,
-        reward_model=None,  # We'll use custom reward evaluation
-        train_dataset=dataset,
-        value_model=None  # Value model is part of the ppo_model
-    )
     
     # Set save path
     save_path = os.path.join("../model/ppo_model/", feature_type)

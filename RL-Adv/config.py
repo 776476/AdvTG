@@ -15,18 +15,14 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Model paths
 # Model paths
-model_name_or_path = "../models/lamma_outputs/checkpoint-300"  # 第二阶段微调后的LoRA checkpoint
-base_model_name = "unsloth/llama-3-8b-bnb-4bit"  # 基础模型名称
+model_name_or_path = "../models/lamma_outputs/checkpoint-300"  # 第二阶段微调后的checkpoint
+
+# Features dictionary
+features_dict = {"Image": "../models/image_model_configs.pkl", "Text": "../models/model_configs.pkl"}
 
 # 检查模型路径是否存在
 if not os.path.exists(model_name_or_path):
     raise FileNotFoundError(f"Fine-tuned LLM not found at {model_name_or_path}. Please run stage 2 first.")
-
-# Features dictionary - 第一阶段训练的检测模型配置
-features_dict = {
-    "Image": "../models/image_model_configs.pkl", 
-    "Text": "../models/model_configs.pkl"
-}
 
 # 检查检测模型配置文件是否存在
 for feature_type, config_path in features_dict.items():
@@ -64,12 +60,16 @@ def create_ppo_config(rl_gpu_config=None):
         gradient_accumulation = default_gradient_accumulation
     
     return PPOConfig(
+        is_peft_model=True,
+        model_name=model_name_or_path,
         learning_rate=1.41e-5,
         batch_size=batch_size,
         mini_batch_size=1,
         gradient_accumulation_steps=gradient_accumulation,
-        # 移除了不支持的参数: use_score_scaling, use_score_norm, score_clip, is_peft_model
-        # log_with="wandb"  # 也可能不支持，先注释掉
+        use_score_scaling=True,  # scaling
+        use_score_norm=True,  # normalization
+        score_clip=1.0,
+        # log_with="wandb"  # 先注释掉，避免依赖问题
     )
 
 # Generation configurations
