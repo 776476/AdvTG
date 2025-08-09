@@ -61,6 +61,8 @@ def setup_models(model_name, device, load_in_4bit=True):
     Returns:
         tuple: (ppo_model, ref_model, tokenizer)
     """
+    from transformers import GenerationConfig
+    
     quantization_config = BitsAndBytesConfig(load_in_4bit=load_in_4bit)
     
     # Load PPO model and reference model (both using the same fine-tuned model)
@@ -78,10 +80,43 @@ def setup_models(model_name, device, load_in_4bit=True):
         trust_remote_code=True
     )
     
+    # Ensure both models have generation_config
+    if not hasattr(ppo_model, 'generation_config') or ppo_model.generation_config is None:
+        try:
+            # Try to load from the model directory first
+            ppo_model.generation_config = GenerationConfig.from_pretrained(model_name)
+        except:
+            # If fails, create a default one
+            ppo_model.generation_config = GenerationConfig(
+                max_length=512,
+                do_sample=True,
+                temperature=0.7,
+                top_p=0.9,
+                pad_token_id=None  # Will be set later
+            )
+    
+    if not hasattr(ref_model, 'generation_config') or ref_model.generation_config is None:
+        try:
+            ref_model.generation_config = GenerationConfig.from_pretrained(model_name)
+        except:
+            ref_model.generation_config = GenerationConfig(
+                max_length=512,
+                do_sample=True,
+                temperature=0.7,
+                top_p=0.9,
+                pad_token_id=None  # Will be set later
+            )
+    
     # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    
+    # Update generation configs with correct pad_token_id
+    ppo_model.generation_config.pad_token_id = tokenizer.pad_token_id
+    ppo_model.generation_config.eos_token_id = tokenizer.eos_token_id
+    ref_model.generation_config.pad_token_id = tokenizer.pad_token_id
+    ref_model.generation_config.eos_token_id = tokenizer.eos_token_id
     
     return ppo_model, ref_model, tokenizer
 
