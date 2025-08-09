@@ -246,7 +246,7 @@ def main():
         
     # Define training arguments for transformer with vLLM-style optimization
     transformer_training_args = TrainingArguments(
-        output_dir="./models/bert_model",
+        output_dir="./models/bert",
         per_device_train_batch_size=BATCH_SIZE,
         per_device_eval_batch_size=BATCH_SIZE,
         learning_rate=LEARNING_RATE,
@@ -256,8 +256,6 @@ def main():
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",  # 使用验证损失作为最佳模型指标
         greater_is_better=False,  # 损失越小越好
-        early_stopping_patience=3,  # 3个epoch没有改善就停止
-        early_stopping_threshold=0.01,  # 最小改善阈值
         report_to="none",  # Disable all automatic logging including wandb
         logging_steps=50,  # Log every 50 steps for manual tracking
         # vLLM风格的优化参数
