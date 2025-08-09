@@ -64,17 +64,15 @@ def setup_models(model_name, device, load_in_4bit=True):
     """
     from config import base_model_name
     
-    quantization_config = BitsAndBytesConfig(load_in_4bit=load_in_4bit)
-    
-    # Load PPO model with LoRA adapter
+    # Load PPO model with LoRA adapter (don't pass quantization_config as it's already configured)
     ppo_model = AutoModelForCausalLMWithValueHead.from_pretrained(
         model_name,  # This is the LoRA checkpoint path
         torch_dtype=torch.float16,
-        quantization_config=quantization_config,
         trust_remote_code=True
     )
     
-    # Load reference model from base model (without LoRA)
+    # Load reference model from base model (with quantization config for base model)
+    quantization_config = BitsAndBytesConfig(load_in_4bit=load_in_4bit)
     ref_model = AutoModelForCausalLMWithValueHead.from_pretrained(
         base_model_name,  # Use the base model for reference
         torch_dtype=torch.float16,

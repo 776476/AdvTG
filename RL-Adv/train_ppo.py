@@ -130,7 +130,7 @@ def main():
     output_length_sampler = LengthSampler(output_min_length, output_max_length)
     
     # Initialize PPO trainer
-    ppo_trainer = PPOTrainer(config, ppo_model, ref_model, tokenizer, dataset=dataset)
+    ppo_trainer = PPOTrainer(config, ppo_model, ref_model, tokenizer)
     
     # Set save path
     save_path = os.path.join("../model/ppo_model/", feature_type)
