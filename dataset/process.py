@@ -6,14 +6,13 @@ This script processes the CICIDS2017 dataset and converts it to HTTP traffic for
 for training different components of the AdvTG framework with optimized data allocation.
 
 Data allocation strategy:
-- DL Training: 5% (dl_train.json) - ~141K samples
-- LLM Training: 25% (llm_train.json) - ~708K samples
-- RL Training: 8% (rl_train.json) - ~226K samples
-- Validation: 2% (val.json) - ~56K samples
-- Testing: 10% (test.json) - ~283K samples
-- Reserved: 50% (for future experiments)
+- DL Training: 15,000 samples (dl_train.json) - Balanced dataset for detection models
+- LLM Training: 80,000 samples (llm_train.json) - Large dataset for LLM fine-tuning  
+- RL Training: 25,000 samples (rl_train.json) - Medium dataset for adversarial generation
+- Validation: 10,000 samples (val.json) - Hyperparameter tuning
+- Testing: 20,000 samples (test.json) - Final evaluation
+- Reserved: Remaining samples (for future experiments)
 
-Author: AdvTG Team
 """
 
 import os
@@ -265,6 +264,43 @@ class CICIDS2017Processor:
         
         return all_http_data
     
+    def create_balanced_dl_dataset(self, http_data: List[Dict[str, Any]], dl_size: int) -> List[Dict[str, Any]]:
+        """Create balanced dataset for DL training with 1:1 malicious:benign ratio."""
+        # Separate malicious and benign samples
+        malicious_samples = [item for item in http_data if item.get('Label') == 'Malicious']
+        benign_samples = [item for item in http_data if item.get('Label') == 'Benign']
+        
+        print(f"📊 Creating balanced DL dataset:")
+        print(f"   Available - Malicious: {len(malicious_samples)}, Benign: {len(benign_samples)}")
+        
+        # Calculate required samples for 1:1 balance
+        samples_per_class = dl_size // 2
+        
+        # Check if we have enough samples
+        if len(malicious_samples) < samples_per_class:
+            print(f"⚠️  Warning: Not enough malicious samples! Need {samples_per_class}, have {len(malicious_samples)}")
+            samples_per_class = len(malicious_samples)
+        
+        if len(benign_samples) < samples_per_class:
+            print(f"⚠️  Warning: Not enough benign samples! Need {samples_per_class}, have {len(benign_samples)}")
+            samples_per_class = min(samples_per_class, len(benign_samples))
+        
+        # Randomly sample from each class
+        random.shuffle(malicious_samples)
+        random.shuffle(benign_samples)
+        
+        selected_malicious = malicious_samples[:samples_per_class]
+        selected_benign = benign_samples[:samples_per_class]
+        
+        # Combine and shuffle
+        balanced_dataset = selected_malicious + selected_benign
+        random.shuffle(balanced_dataset)
+        
+        print(f"✅ Created balanced DL dataset: {len(selected_malicious)} malicious + {len(selected_benign)} benign = {len(balanced_dataset)} total")
+        print(f"   Ratio - Malicious: {len(selected_malicious)/len(balanced_dataset)*100:.1f}%, Benign: {len(selected_benign)/len(balanced_dataset)*100:.1f}%")
+        
+        return balanced_dataset
+
     def save_processed_data(self, http_data: List[Dict[str, Any]], 
                           output_files: Dict[str, str] = None) -> Dict[str, str]:
         """Save processed data to JSON files with new data allocation strategy."""
@@ -276,8 +312,8 @@ class CICIDS2017Processor:
                 'llm_train': 'llm_train.json',    # LLM微调用大数据集
                 'rl_train': 'rl_train.json',     # RL训练用中等数据集
                 'val': 'val.json',           # 验证集
-                'test': 'test.json',             # 公共测试集
-                'full': 'cicids2017_full.json'         # 完整数据集
+                'test': 'test.json'             # 公共测试集
+                # 'full': 'cicids2017_full.json'         # 完整数据集
             }
         
         if not http_data:
@@ -287,100 +323,107 @@ class CICIDS2017Processor:
         # Shuffle data for random distribution
         random.shuffle(http_data)
         
-        # Optimized data allocation strategy (更合理的分配):
-        # - DL Training: 5% (sufficient for deep learning models)
-        # - LLM Training: 25% (adequate for LLM fine-tuning)  
-        # - RL Training: 8% (quality over quantity for RL)
-        # - Validation: 2% (validation set for hyperparameter tuning)
-        # - Test: 10% (sufficient for final evaluation)
-        # - Reserved: 47% (保留用于后续实验或其他用途)
-        dl_split = 0.05      # 5% for DL training (~141K samples)
-        llm_split = 0.25     # 25% for LLM training (~708K samples)
-        rl_split = 0.08      # 8% for RL training (~226K samples)
-        val_split = 0.02     # 2% for validation (~56K samples)
-        test_split = 0.10    # 10% for testing (~283K samples)
+        # Fixed sample allocation strategy (固定样本数量分配):
+        # Stage 1 - DL Detection Models: 15,000 samples (balanced malicious:benign = 1:1)
+        # Stage 2 - LLM Fine-tuning: 80,000 samples (large dataset for domain adaptation)  
+        # Stage 3 - RL Adversarial Generation: 25,000 samples (medium dataset for policy optimization)
+        # - Validation: 10,000 samples (validation set for hyperparameter tuning)
+        # - Test: 20,000 samples (sufficient for final evaluation)
+        # - Reserved: Remaining samples (保留用于后续实验或其他用途)
+        
+        dl_size = 15000      # Stage 1: DL training samples (需要1:1平衡)
+        llm_size = 80000     # Stage 2: LLM training samples (大数据集用于域适应)
+        rl_size = 25000      # Stage 3: RL training samples (中等数据集用于策略优化)
+        val_size = 10000     # Validation samples (更大的验证集用于更可靠的超参数调优)
+        test_size = 20000    # Test samples
         
         total_size = len(http_data)
-        dl_size = int(total_size * dl_split)
-        llm_size = int(total_size * llm_split)
-        rl_size = int(total_size * rl_split)
-        val_size = int(total_size * val_split)
-        test_size = total_size - dl_size - llm_size - rl_size - val_size  # Remaining for test
+        required_samples = dl_size + llm_size + rl_size + val_size + test_size
         
-        # Split data
+        if total_size < required_samples:
+            print(f"⚠️  Warning: Not enough data! Required: {required_samples}, Available: {total_size}")
+            print("Adjusting allocation proportionally...")
+            scale_factor = total_size / required_samples
+            dl_size = int(dl_size * scale_factor)
+            llm_size = int(llm_size * scale_factor)
+            rl_size = int(rl_size * scale_factor)
+            val_size = int(val_size * scale_factor)
+            test_size = total_size - dl_size - llm_size - rl_size - val_size
+        else:
+            print(f"✅ Sufficient data: Required: {required_samples}, Available: {total_size}")
+            print(f"📊 Reserved for future use: {total_size - required_samples} samples")
+        
+        # Split data with balanced DL dataset
         idx = 0
-        dl_data = http_data[idx:idx + dl_size]
-        idx += dl_size
         
-        llm_data = http_data[idx:idx + llm_size]
-        idx += llm_size
+        # Create balanced DL dataset (1:1 ratio)
+        dl_data = self.create_balanced_dl_dataset(http_data, dl_size)
         
-        rl_data = http_data[idx:idx + rl_size]
-        idx += rl_size
+        # Remove DL samples from the remaining pool to avoid overlap
+        remaining_data = http_data.copy()
+        for dl_item in dl_data:
+            if dl_item in remaining_data:
+                remaining_data.remove(dl_item)
         
-        val_data = http_data[idx:idx + val_size]
-        idx += val_size
+        print(f"📊 Remaining data pool after DL allocation: {len(remaining_data)} samples")
         
-        test_data = http_data[idx:idx + test_size]
+        # Shuffle remaining data for other allocations
+        random.shuffle(remaining_data)
+        
+        # Allocate remaining data
+        idx = 0
+        llm_data = remaining_data[idx:idx + llm_size] if len(remaining_data) >= llm_size else remaining_data[idx:]
+        idx += len(llm_data)
+        
+        rl_data = remaining_data[idx:idx + rl_size] if len(remaining_data) >= idx + rl_size else remaining_data[idx:idx + min(rl_size, len(remaining_data) - idx)]
+        idx += len(rl_data)
+        
+        val_data = remaining_data[idx:idx + val_size] if len(remaining_data) >= idx + val_size else remaining_data[idx:idx + min(val_size, len(remaining_data) - idx)]
+        idx += len(val_data)
+        
+        test_data = remaining_data[idx:idx + test_size] if len(remaining_data) >= idx + test_size else remaining_data[idx:]
         
         saved_files = {}
         
-        # Save DL training data (small)
+        # Save DL training data (balanced)
         dl_path = os.path.join(self.dataset_dir, output_files['dl_train'])
         with open(dl_path, 'w', encoding='utf-8') as f:
             json.dump(dl_data, f, indent=2, ensure_ascii=False)
         saved_files['dl_train'] = dl_path
-        print(f"✅ DL training data saved: {dl_path} ({len(dl_data)} samples, {dl_split*100}%)")
+        
+        # Print DL dataset balance
+        dl_malicious = len([item for item in dl_data if item.get('Label') == 'Malicious'])
+        dl_benign = len([item for item in dl_data if item.get('Label') == 'Benign'])
+        print(f"✅ DL training data saved: {dl_path} ({len(dl_data)} samples)")
+        print(f"   └─ Balance: {dl_malicious} malicious + {dl_benign} benign (ratio: {dl_malicious/len(dl_data)*100:.1f}%:{dl_benign/len(dl_data)*100:.1f}%)")
         
         # Save LLM training data (moderate size)
         llm_path = os.path.join(self.dataset_dir, output_files['llm_train'])
         with open(llm_path, 'w', encoding='utf-8') as f:
             json.dump(llm_data, f, indent=2, ensure_ascii=False)
         saved_files['llm_train'] = llm_path
-        print(f"✅ LLM training data saved: {llm_path} ({len(llm_data)} samples, {llm_split*100}%)")
+        print(f"✅ LLM training data saved: {llm_path} ({len(llm_data)} samples)")
         
         # Save RL training data (compact)
         rl_path = os.path.join(self.dataset_dir, output_files['rl_train'])
         with open(rl_path, 'w', encoding='utf-8') as f:
             json.dump(rl_data, f, indent=2, ensure_ascii=False)
         saved_files['rl_train'] = rl_path
-        print(f"✅ RL training data saved: {rl_path} ({len(rl_data)} samples, {rl_split*100}%)")
+        print(f"✅ RL training data saved: {rl_path} ({len(rl_data)} samples)")
         
         # Save validation data
         val_path = os.path.join(self.dataset_dir, output_files['val'])
         with open(val_path, 'w', encoding='utf-8') as f:
             json.dump(val_data, f, indent=2, ensure_ascii=False)
         saved_files['val'] = val_path
-        print(f"✅ Validation data saved: {val_path} ({len(val_data)} samples, {val_split*100}%)")
+        print(f"✅ Validation data saved: {val_path} ({len(val_data)} samples)")
         
         # Save test data (common)
         test_path = os.path.join(self.dataset_dir, output_files['test'])
         with open(test_path, 'w', encoding='utf-8') as f:
             json.dump(test_data, f, indent=2, ensure_ascii=False)
         saved_files['test'] = test_path
-        print(f"✅ Test data saved: {test_path} ({len(test_data)} samples, {test_split*100:.1f}%)")
-        
-        # Save full dataset
-        full_path = os.path.join(self.dataset_dir, output_files['full'])
-        with open(full_path, 'w', encoding='utf-8') as f:
-            json.dump(http_data, f, indent=2, ensure_ascii=False)
-        saved_files['full'] = full_path
-        print(f"✅ Full dataset saved: {full_path} ({len(http_data)} samples)")
-        
-        # Create legacy compatibility files
-        # Keep train_data2.json for backward compatibility (pointing to DL data)
-        legacy_train_path = os.path.join(self.dataset_dir, 'train_data2.json')
-        with open(legacy_train_path, 'w', encoding='utf-8') as f:
-            json.dump(dl_data, f, indent=2, ensure_ascii=False)
-        saved_files['legacy_train'] = legacy_train_path
-        print(f"✅ Legacy train file saved: {legacy_train_path} (for backward compatibility)")
-        
-        # Keep test2.json for backward compatibility
-        legacy_test_path = os.path.join(self.dataset_dir, 'test2.json')
-        with open(legacy_test_path, 'w', encoding='utf-8') as f:
-            json.dump(test_data, f, indent=2, ensure_ascii=False)
-        saved_files['legacy_test'] = legacy_test_path
-        print(f"✅ Legacy test file saved: {legacy_test_path} (for backward compatibility)")
+        print(f"✅ Test data saved: {test_path} ({len(test_data)} samples)")
         
         return saved_files
     
@@ -441,23 +484,23 @@ class CICIDS2017Processor:
         print("\n🎉 Processing completed successfully!")
         print("=" * 60)
         print("Generated files for optimized training purposes:")
-        print(f"  • DL Training (5%): {saved_files.get('dl_train', 'N/A')}")
-        print(f"  • LLM Training (25%): {saved_files.get('llm_train', 'N/A')}")
-        print(f"  • RL Training (8%): {saved_files.get('rl_train', 'N/A')}")
-        print(f"  • Validation Set (2%): {saved_files.get('val', 'N/A')}")
-        print(f"  • Test Data (10%): {saved_files.get('test', 'N/A')}")
-        print(f"  • Full Dataset: {saved_files.get('full', 'N/A')}")
-        print(f"  • Legacy Files: {saved_files.get('legacy_train', 'N/A')}, {saved_files.get('legacy_test', 'N/A')}")
+        print(f"  • Stage 1 - DL Training (15K): {saved_files.get('dl_train', 'N/A')}")
+        print(f"  • Stage 2 - LLM Training (80K): {saved_files.get('llm_train', 'N/A')}")
+        print(f"  • Stage 3 - RL Training (25K): {saved_files.get('rl_train', 'N/A')}")
+        print(f"  • Validation Set (10K): {saved_files.get('val', 'N/A')}")
+        print(f"  • Test Data (20K): {saved_files.get('test', 'N/A')}")
+        # print(f"  • Full Dataset: {saved_files.get('full', 'N/A')}")
+        # print(f"  • Legacy Files: {saved_files.get('legacy_train', 'N/A')}, {saved_files.get('legacy_test', 'N/A')}")
         
         print("\nUsage examples:")
-        print("  DL Training:")
+        print("  Stage 1 - DL Training (Detection Models):")
         print("    from DL.data_processing import load_data, prepare_dataset")
-        print("    data = load_data('dataset/dl_train.json')  # ~141K samples")
+        print("    data = load_data('dataset/dl_train.json')  # 15K balanced samples")
         print("    dataset = prepare_dataset(data)")
-        print("  LLM Fine-tuning:")
-        print("    # Use 'dataset/llm_train.json' with ~708K samples")
-        print("  RL Training:")
-        print("    # Use 'dataset/rl_train.json' with ~226K samples")
+        print("  Stage 2 - LLM Fine-tuning (Domain Adaptation):")
+        print("    # Use 'dataset/llm_train.json' with 80K samples")
+        print("  Stage 3 - RL Training (Adversarial Generation):")
+        print("    # Use 'dataset/rl_train.json' with 25K samples")
         
         return True
 
@@ -471,13 +514,17 @@ def main():
     
     if success:
         print("\n✅ All done! Your CICIDS2017 data is ready for AdvTG training.")
-        print("📊 Optimized data split summary:")
-        print("  • DL models will use: dl_train.json (5% = ~141K samples)")
-        print("  • LLM fine-tuning will use: llm_train.json (25% = ~708K samples)")
-        print("  • RL training will use: rl_train.json (8% = ~226K samples)")
-        print("  • All models will validate on: val.json (2% = ~56K samples)")
-        print("  • Final evaluation will use: test.json (10% = ~283K samples)")
-        print("  • Reserved for future use: 50% = ~1.33M samples")
+        print("📊 Three-stage allocation summary:")
+        print("  • Stage 1 - DL Detection Models: dl_train.json (15,000 samples)")
+        print("    └─ Balanced dataset: ~7,500 malicious + ~7,500 benign (1:1 ratio)")
+        print("  • Stage 2 - LLM Fine-tuning: llm_train.json (80,000 samples)")
+        print("    └─ Large dataset for domain adaptation and traffic pattern learning")
+        print("  • Stage 3 - RL Adversarial Generation: rl_train.json (25,000 samples)")
+        print("    └─ Medium dataset for policy optimization and reward feedback")
+        print("  • Validation: val.json (10,000 samples)")
+        print("  • Testing: test.json (20,000 samples)")
+        print("  • Total allocated: 150,000 samples")
+        print("  • Remaining samples: Reserved for future experiments")
     else:
         print("\n❌ Processing failed. Please check the error messages above.")
         return 1

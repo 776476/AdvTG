@@ -9,6 +9,9 @@ os.environ["HUGGINGFACE_HUB_ENDPOINT"] = "https://hf-mirror.com"
 os.environ["HF_HUB_ENDPOINT"] = "https://hf-mirror.com"
 os.environ["HUGGINGFACE_HUB_URL"] = "https://hf-mirror.com"
 
+# Disable tokenizers parallelism to avoid fork warnings
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 import torch
 from transformers import TrainingArguments, TrainerCallback
 

@@ -1,4 +1,8 @@
 import os
+
+# Set environment variables early to avoid conflicts
+os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Disable tokenizers parallelism to avoid fork warnings
+
 import torch
 import json
 import multiprocessing as mp
@@ -61,7 +65,8 @@ def main():
             project="AdvTG-RL-Training",
             description="RL Adversarial Training stage - PPO with reward feedback",
             config={
-                "algorithm": "PPO",
+                # 移除字符串类型字段，SwanLab config中只保留数值类型
+                "algorithm_ppo": 1,  # 用数值表示PPO算法
                 "learning_rate": 1.41e-5,
                 "batch_size": 4,
                 "mini_batch_size": 1,
@@ -221,7 +226,7 @@ def main():
                     "min_reward": min_reward,
                     "std_reward": std_reward,
                     "moving_avg_reward": moving_avg_reward,
-                    "feature_type": feature_type,
+                    "feature_type_code": 1 if feature_type == "request" else 2,  # 用数值代替字符串
                     "batch_size": len(batch['instruction'])
                 }
                 
@@ -286,8 +291,8 @@ def main():
             swanlab.log({
                 "training_completed": 1,
                 "total_epochs": epoch + 1,
-                "feature_type_used": feature_type,
-                "final_save_path": save_path
+                "feature_type_code": 1 if feature_type == "request" else 2,  # 用数值代替字符串
+                "model_saved": 1  # 用数值表示模型保存状态
             })
             swanlab.finish()
             print("📊 RL training results logged to SwanLab successfully!")

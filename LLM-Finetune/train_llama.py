@@ -10,6 +10,9 @@ os.environ["HUGGINGFACE_HUB_ENDPOINT"] = "https://hf-mirror.com"
 os.environ["HF_HUB_ENDPOINT"] = "https://hf-mirror.com"
 os.environ["HUGGINGFACE_HUB_URL"] = "https://hf-mirror.com"
 
+# Disable tokenizers parallelism to avoid fork warnings
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 # Disable wandb and enable swanlab
 os.environ["WANDB_DISABLED"] = "true"
 os.environ["WANDB_MODE"] = "disabled"
@@ -22,12 +25,13 @@ try:
         project="AdvTG-LLM-Finetune",
         description="LLM Fine-tuning stage - Llama-3-8B with LoRA",
         config={
-            "model_name": "unsloth/llama-3-8b-bnb-4bit",
+            # 移除字符串类型字段，SwanLab config中只保留数值类型
+            "model_version": 3.8,  # 用数值表示llama-3-8b版本
             "max_seq_length": 2048,
             "learning_rate": 2e-4,
             "lora_r": 16,
             "lora_alpha": 16,
-            "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+            "target_modules_count": 7  # 目标模块数量，用数值代替列表
         }
     )
     print("✅ SwanLab initialized for LLM fine-tuning!")
@@ -290,10 +294,10 @@ if use_swanlab and 'swanlab' in locals():
         if hasattr(trainer_stats, 'train_samples_per_second'):
             swanlab.log({"train_samples_per_second": trainer_stats.train_samples_per_second})
         
-        # Log model info
+        # Log model info (移除字符串类型字段，SwanLab期望数值类型)
         swanlab.log({
-            "model_name": "llama-3-8b",
-            "fine_tuning_method": "LoRA",
+            "llama_model_version": 3.8,  # 用数值表示模型版本
+            "lora_method_used": 1,  # 用数值表示LoRA方法
             "training_completed": 1
         })
         
