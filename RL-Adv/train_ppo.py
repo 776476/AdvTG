@@ -116,7 +116,17 @@ def main():
     ppo_model, ref_model, tokenizer = setup_models(model_name_or_path, device)
     
     # Update generation_kwargs with tokenizer pad token ID
-    generation_kwargs["pad_token_id"] = tokenizer.eos_token_id
+    # Fix pad_token issue if pad_token_id is same as eos_token_id
+    if tokenizer.pad_token_id is None or tokenizer.pad_token_id == tokenizer.eos_token_id:
+        if tokenizer.unk_token_id is not None:
+            tokenizer.pad_token_id = tokenizer.unk_token_id
+        else:
+            # Add a new pad token if needed
+            tokenizer.add_special_tokens({'pad_token': '<pad>'})
+            ppo_model.resize_token_embeddings(len(tokenizer))
+            ref_model.resize_token_embeddings(len(tokenizer))
+    
+    generation_kwargs["pad_token_id"] = tokenizer.pad_token_id
     
     # Configuration parameters (load detection models first)
     feature_type, model_configs = select_feature_model_type(features_dict)
@@ -220,8 +230,12 @@ def main():
         # Generate responses (TRL 0.15.2 - use model directly instead of trainer.generate)
         try:
             with torch.no_grad():
+                # Create attention mask for query_tensors
+                attention_mask = (query_tensors != tokenizer.pad_token_id).long()
+                
                 response_tensors_batch = ppo_model.generate(
-                    query_tensors, 
+                    query_tensors,
+                    attention_mask=attention_mask,  # Add attention mask to fix warning
                     **generation_kwargs  # generation_kwargs already contains pad_token_id
                 )
             response_tensors_list = [r.squeeze()[:max_length] for r in response_tensors_batch]

@@ -175,7 +175,16 @@ def evaluate_responses(batch, feature_type, model_configs, padded_tensor_batch, 
     results = []
     
     for model_config in model_configs:
-        if model_config["type"] != "custom" or model_config["name"] == "deeplog":
+        # Debug: print model_config structure
+        print(f"Debug - model_config keys: {model_config.keys()}")
+        print(f"Debug - model_config: {model_config}")
+        
+        # Check if required keys exist
+        if "type" not in model_config:
+            print(f"Warning: 'type' key missing in model_config, skipping")
+            continue
+            
+        if model_config["type"] != "custom" or model_config.get("name") == "deeplog":
             continue
             
         model_path = model_config["path"]
