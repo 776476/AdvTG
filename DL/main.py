@@ -335,17 +335,25 @@ def main():
     # 合并全局多GPU配置
     transformer_training_args_kwargs = get_training_arguments_for_stage("DL", transformer_training_args_base)
     
-    # 强制禁用分布式训练相关参数
-    transformer_training_args_kwargs.update({
-        "ddp_backend": None,
+    # 过滤掉无效的参数，只保留TrainingArguments支持的参数
+    valid_training_args = {}
+    from inspect import signature
+    training_args_params = signature(TrainingArguments).parameters
+    
+    for key, value in transformer_training_args_kwargs.items():
+        if key in training_args_params:
+            valid_training_args[key] = value
+        else:
+            print(f"⚠️ 跳过无效参数: {key}={value}")
+    
+    # 添加必要的多GPU配置
+    valid_training_args.update({
         "ddp_find_unused_parameters": False,
         "dataloader_drop_last": True,
         "local_rank": -1,  # 强制禁用分布式
-        "no_cuda": False,
-        "parallel_mode": "not_parallel",  # 禁用并行模式检测
     })
     
-    transformer_training_args = TrainingArguments(**transformer_training_args_kwargs)
+    transformer_training_args = TrainingArguments(**valid_training_args)
         
     # Only train transformer model if we have real transformers tokenizer
     all_model_configs = []  # 收集所有模型配置
@@ -421,17 +429,25 @@ def main():
     # 合并全局多GPU配置
     custom_training_args_kwargs = get_training_arguments_for_stage("DL", custom_training_args_base)
     
-    # 强制禁用分布式训练相关参数
-    custom_training_args_kwargs.update({
-        "ddp_backend": None,
+    # 过滤掉无效的参数，只保留TrainingArguments支持的参数
+    valid_custom_args = {}
+    from inspect import signature
+    training_args_params = signature(TrainingArguments).parameters
+    
+    for key, value in custom_training_args_kwargs.items():
+        if key in training_args_params:
+            valid_custom_args[key] = value
+        else:
+            print(f"⚠️ 跳过无效参数: {key}={value}")
+    
+    # 添加必要的多GPU配置
+    valid_custom_args.update({
         "ddp_find_unused_parameters": False,
         "dataloader_drop_last": True,
         "local_rank": -1,  # 强制禁用分布式
-        "no_cuda": False,
-        "parallel_mode": "not_parallel",  # 禁用并行模式检测
     })
     
-    custom_training_args = TrainingArguments(**custom_training_args_kwargs)
+    custom_training_args = TrainingArguments(**valid_custom_args)
     
     print("\n====== Training Custom Models ======")
     
