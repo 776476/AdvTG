@@ -3,6 +3,13 @@ import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import time
 
+# 修复分布式训练初始化问题 - 直接在代码中处理
+os.environ["WORLD_SIZE"] = "1"
+os.environ["RANK"] = "0" 
+os.environ["LOCAL_RANK"] = "0"
+os.environ["MASTER_ADDR"] = "localhost"
+os.environ["MASTER_PORT"] = "12355"
+
 # 导入全局多GPU配置
 import sys
 sys.path.append('..')
@@ -17,8 +24,34 @@ os.environ["HUGGINGFACE_HUB_URL"] = "https://hf-mirror.com"
 # Disable tokenizers parallelism to avoid fork warnings
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+# 避免分布式训练自动初始化的环境变量
+os.environ["WORLD_SIZE"] = "1"
+os.environ["RANK"] = "0" 
+os.environ["LOCAL_RANK"] = "0"
+os.environ["MASTER_ADDR"] = "localhost"
+os.environ["MASTER_PORT"] = "12355"
+
+# 禁用wandb
+os.environ["WANDB_DISABLED"] = "true"
+os.environ["WANDB_MODE"] = "disabled"
+
 import torch
 from transformers import TrainingArguments, TrainerCallback, EarlyStoppingCallback
+
+# 手动初始化分布式环境以避免自动检测问题
+if not torch.distributed.is_initialized():
+    try:
+        # 初始化单进程分布式环境
+        torch.distributed.init_process_group(
+            backend='nccl' if torch.cuda.is_available() else 'gloo',
+            init_method='env://',
+            world_size=1,
+            rank=0
+        )
+        print("✅ 手动初始化分布式环境成功")
+    except Exception as e:
+        print(f"⚠️ 分布式初始化跳过: {e}")
+        # 这是正常的，继续使用DataParallel
 
 from models import CNNLSTMClassifier, TextCNNClassifier, DNNClassifier, DeepLog
 from data_processing import load_data, prepare_dataset, load_tokenizer, SimpleTokenizer
@@ -301,6 +334,17 @@ def main():
     
     # 合并全局多GPU配置
     transformer_training_args_kwargs = get_training_arguments_for_stage("DL", transformer_training_args_base)
+    
+    # 强制禁用分布式训练相关参数
+    transformer_training_args_kwargs.update({
+        "ddp_backend": None,
+        "ddp_find_unused_parameters": False,
+        "dataloader_drop_last": True,
+        "local_rank": -1,  # 强制禁用分布式
+        "no_cuda": False,
+        "parallel_mode": "not_parallel",  # 禁用并行模式检测
+    })
+    
     transformer_training_args = TrainingArguments(**transformer_training_args_kwargs)
         
     # Only train transformer model if we have real transformers tokenizer
@@ -376,6 +420,17 @@ def main():
     
     # 合并全局多GPU配置
     custom_training_args_kwargs = get_training_arguments_for_stage("DL", custom_training_args_base)
+    
+    # 强制禁用分布式训练相关参数
+    custom_training_args_kwargs.update({
+        "ddp_backend": None,
+        "ddp_find_unused_parameters": False,
+        "dataloader_drop_last": True,
+        "local_rank": -1,  # 强制禁用分布式
+        "no_cuda": False,
+        "parallel_mode": "not_parallel",  # 禁用并行模式检测
+    })
+    
     custom_training_args = TrainingArguments(**custom_training_args_kwargs)
     
     print("\n====== Training Custom Models ======")
