@@ -7,7 +7,7 @@ import time
 # 导入全局多GPU配置
 import sys
 sys.path.append('..')
-from multi_gpu_config import initialize_multi_gpu_for_stage, get_training_arguments_for_stage
+from multi_gpu_config import AdvTGMultiGPUConfig
 
 # 设置Hugging Face镜像 - 这行需要在导入unsloth之前或者导入之后
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
@@ -25,11 +25,12 @@ os.environ["WANDB_SILENT"] = "true"
 
 # 主程序入口
 if __name__ == "__main__":
-    # 初始化LLM阶段的多GPU配置
-    llm_gpu_config = initialize_multi_gpu_for_stage("LLM")
-    
     # 开始训练流程
     print("🚀 Starting LLM fine-tuning with multi-GPU support...")
+
+    # 先初始化全局多GPU配置，用于SwanLab配置
+    global_gpu_config = AdvTGMultiGPUConfig()
+    llm_gpu_config = global_gpu_config.get_stage_config("LLM")
 
     # Initialize SwanLab for LLM fine-tuning tracking
     try:
@@ -309,13 +310,6 @@ training_args_base = {
     "ddp_backend": None,
     "dataloader_num_workers": 0,  # 避免多进程冲突
 }
-
-# 初始化全局多GPU配置
-from multi_gpu_config import AdvTGMultiGPUConfig
-global_gpu_config = AdvTGMultiGPUConfig()
-
-# 获取LLM阶段GPU配置
-llm_gpu_config = global_gpu_config.get_stage_config("LLM")
 
 # 创建TrainingArguments，不使用全局多GPU配置的分布式参数
 training_args = TrainingArguments(**training_args_base)

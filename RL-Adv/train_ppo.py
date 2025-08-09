@@ -6,7 +6,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Disable tokenizers parallelism
 # 导入全局多GPU配置
 import sys
 sys.path.append('..')
-from multi_gpu_config import initialize_multi_gpu_for_stage, get_multi_gpu_config
+from multi_gpu_config import AdvTGMultiGPUConfig
 
 import torch
 import json
@@ -34,8 +34,9 @@ def main():
     print("🚀 Starting RL-Adv PPO Training...")
     print("=" * 60)
     
-    # 初始化RL阶段的多GPU配置
-    rl_gpu_config = initialize_multi_gpu_for_stage("RL")
+    # 初始化全局多GPU配置
+    global_gpu_config = AdvTGMultiGPUConfig()
+    rl_gpu_config = global_gpu_config.get_stage_config("RL")
     
     # Initialize SwanLab for RL training tracking
     try:

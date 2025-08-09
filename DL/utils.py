@@ -86,4 +86,39 @@ def plot_confusion_matrix(y_true, y_pred, classes=None, save_path=None):
 
 def count_parameters(model):
     """Count the number of trainable parameters in a model."""
-    return sum(p.numel() for p in model.parameters() if p.requires_grad) 
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+class DLSwanLabCallback:
+    """SwanLab回调函数 - 用于记录训练过程中的指标"""
+    
+    def __init__(self, use_swanlab=False, model_name="model"):
+        self.use_swanlab = use_swanlab
+        self.model_name = model_name
+        
+    def on_log(self, args, state, control, model=None, tokenizer=None, **kwargs):
+        """训练过程中的日志回调"""
+        if not self.use_swanlab:
+            return
+        
+        try:
+            import swanlab
+            logs = kwargs.get('logs', {})
+            
+            # 记录训练指标
+            for key, value in logs.items():
+                if isinstance(value, (int, float)):
+                    swanlab.log({f"{self.model_name}_{key}": value})
+                    
+        except Exception as e:
+            print(f"⚠️  SwanLab logging failed: {e}")
+    
+    def on_train_begin(self, args, state, control, **kwargs):
+        """训练开始时的回调"""
+        if self.use_swanlab:
+            print(f"📊 Starting SwanLab tracking for {self.model_name}")
+    
+    def on_train_end(self, args, state, control, **kwargs):
+        """训练结束时的回调"""
+        if self.use_swanlab:
+            print(f"📊 Completed SwanLab tracking for {self.model_name}") 
