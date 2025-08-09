@@ -264,43 +264,6 @@ class CICIDS2017Processor:
         
         return all_http_data
     
-    def create_balanced_dl_dataset(self, http_data: List[Dict[str, Any]], dl_size: int) -> List[Dict[str, Any]]:
-        """Create balanced dataset for DL training with 1:1 malicious:benign ratio."""
-        # Separate malicious and benign samples
-        malicious_samples = [item for item in http_data if item.get('Label') == 'Malicious']
-        benign_samples = [item for item in http_data if item.get('Label') == 'Benign']
-        
-        print(f"📊 Creating balanced DL dataset:")
-        print(f"   Available - Malicious: {len(malicious_samples)}, Benign: {len(benign_samples)}")
-        
-        # Calculate required samples for 1:1 balance
-        samples_per_class = dl_size // 2
-        
-        # Check if we have enough samples
-        if len(malicious_samples) < samples_per_class:
-            print(f"⚠️  Warning: Not enough malicious samples! Need {samples_per_class}, have {len(malicious_samples)}")
-            samples_per_class = len(malicious_samples)
-        
-        if len(benign_samples) < samples_per_class:
-            print(f"⚠️  Warning: Not enough benign samples! Need {samples_per_class}, have {len(benign_samples)}")
-            samples_per_class = min(samples_per_class, len(benign_samples))
-        
-        # Randomly sample from each class
-        random.shuffle(malicious_samples)
-        random.shuffle(benign_samples)
-        
-        selected_malicious = malicious_samples[:samples_per_class]
-        selected_benign = benign_samples[:samples_per_class]
-        
-        # Combine and shuffle
-        balanced_dataset = selected_malicious + selected_benign
-        random.shuffle(balanced_dataset)
-        
-        print(f"✅ Created balanced DL dataset: {len(selected_malicious)} malicious + {len(selected_benign)} benign = {len(balanced_dataset)} total")
-        print(f"   Ratio - Malicious: {len(selected_malicious)/len(balanced_dataset)*100:.1f}%, Benign: {len(selected_benign)/len(balanced_dataset)*100:.1f}%")
-        
-        return balanced_dataset
-
     def save_processed_data(self, http_data: List[Dict[str, Any]], 
                           output_files: Dict[str, str] = None) -> Dict[str, str]:
         """Save processed data to JSON files with new data allocation strategy."""
@@ -356,19 +319,34 @@ class CICIDS2017Processor:
         # Split data with balanced DL dataset
         idx = 0
         
-        # Create balanced DL dataset (1:1 ratio)
-        dl_data = self.create_balanced_dl_dataset(http_data, dl_size)
+        # First separate malicious and benign for efficient allocation
+        malicious_samples = [item for item in http_data if item.get('Label') == 'Malicious']
+        benign_samples = [item for item in http_data if item.get('Label') == 'Benign']
         
-        # Remove DL samples from the remaining pool to avoid overlap
-        remaining_data = http_data.copy()
-        for dl_item in dl_data:
-            if dl_item in remaining_data:
-                remaining_data.remove(dl_item)
+        print(f"📊 Creating optimized data allocation:")
+        print(f"   Available - Malicious: {len(malicious_samples)}, Benign: {len(benign_samples)}")
+        
+        # Shuffle both categories
+        random.shuffle(malicious_samples)
+        random.shuffle(benign_samples)
+        
+        # Create balanced DL dataset (1:1 ratio) - take from beginning
+        samples_per_class = dl_size // 2
+        dl_malicious = malicious_samples[:samples_per_class]
+        dl_benign = benign_samples[:samples_per_class]
+        dl_data = dl_malicious + dl_benign
+        random.shuffle(dl_data)
+        
+        print(f"✅ Created balanced DL dataset: {len(dl_malicious)} malicious + {len(dl_benign)} benign = {len(dl_data)} total")
+        print(f"   Ratio - Malicious: {len(dl_malicious)/len(dl_data)*100:.1f}%, Benign: {len(dl_benign)/len(dl_data)*100:.1f}%")
+        
+        # Use remaining samples for other datasets - much more efficient
+        remaining_malicious = malicious_samples[samples_per_class:]
+        remaining_benign = benign_samples[samples_per_class:]
+        remaining_data = remaining_malicious + remaining_benign
+        random.shuffle(remaining_data)
         
         print(f"📊 Remaining data pool after DL allocation: {len(remaining_data)} samples")
-        
-        # Shuffle remaining data for other allocations
-        random.shuffle(remaining_data)
         
         # Allocate remaining data
         idx = 0
@@ -392,10 +370,10 @@ class CICIDS2017Processor:
         saved_files['dl_train'] = dl_path
         
         # Print DL dataset balance
-        dl_malicious = len([item for item in dl_data if item.get('Label') == 'Malicious'])
-        dl_benign = len([item for item in dl_data if item.get('Label') == 'Benign'])
+        dl_malicious_count = len([item for item in dl_data if item.get('Label') == 'Malicious'])
+        dl_benign_count = len([item for item in dl_data if item.get('Label') == 'Benign'])
         print(f"✅ DL training data saved: {dl_path} ({len(dl_data)} samples)")
-        print(f"   └─ Balance: {dl_malicious} malicious + {dl_benign} benign (ratio: {dl_malicious/len(dl_data)*100:.1f}%:{dl_benign/len(dl_data)*100:.1f}%)")
+        print(f"   └─ Balance: {dl_malicious_count} malicious + {dl_benign_count} benign (ratio: {dl_malicious_count/len(dl_data)*100:.1f}%:{dl_benign_count/len(dl_data)*100:.1f}%)")
         
         # Save LLM training data (moderate size)
         llm_path = os.path.join(self.dataset_dir, output_files['llm_train'])
