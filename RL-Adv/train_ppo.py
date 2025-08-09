@@ -118,8 +118,16 @@ def main():
     # Update generation_kwargs with tokenizer pad token ID
     generation_kwargs["pad_token_id"] = tokenizer.eos_token_id
     
-    # Initialize PPO trainer (without dataset parameter for new TRL version)
-    ppo_trainer = PPOTrainer(config, ppo_model, ref_model, tokenizer)
+    # Initialize PPO trainer (new TRL version requires explicit parameters)
+    ppo_trainer = PPOTrainer(
+        config, 
+        ppo_model, 
+        ref_model, 
+        tokenizer,
+        reward_model=None,  # We use custom reward evaluation
+        train_dataset=dataset,
+        value_model=None    # Value model is integrated in ppo_model
+    )
     
     # Configuration parameters (using config from config.py)
     feature_type, model_configs = select_feature_model_type(features_dict)
